@@ -87,9 +87,16 @@ struct PlayerView: View {
                 .disabled(!player.hasNext)
             }
 
-            // Speed / favorite / download
+            // Repeat / speed / favorite / download
             if let record = player.current {
-                HStack(spacing: 48) {
+                HStack(spacing: 32) {
+                    Button {
+                        player.cycleRepeatMode()
+                    } label: {
+                        Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
+                            .foregroundStyle(player.repeatMode == .off ? Color.secondary : Color.accentColor)
+                    }
+
                     Menu {
                         ForEach(PlayerManager.availableRates, id: \.self) { rate in
                             Button {

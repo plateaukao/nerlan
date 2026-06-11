@@ -17,6 +17,23 @@ final class PlayerManager: ObservableObject {
 
     static let availableRates: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
+    enum RepeatMode: Int {
+        case off = 0, all = 1, one = 2
+    }
+
+    @Published var repeatMode: RepeatMode =
+        RepeatMode(rawValue: UserDefaults.standard.integer(forKey: "repeatMode")) ?? .off {
+        didSet { UserDefaults.standard.set(repeatMode.rawValue, forKey: "repeatMode") }
+    }
+
+    func cycleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
+        }
+    }
+
     @Published var playbackRate: Float = UserDefaults.standard.object(forKey: "playbackRate") as? Float ?? 1.0 {
         didSet {
             UserDefaults.standard.set(playbackRate, forKey: "playbackRate")
@@ -50,7 +67,7 @@ final class PlayerManager: ObservableObject {
 
     var hasNext: Bool {
         guard let current, let i = queue.firstIndex(of: current) else { return false }
-        return i + 1 < queue.count
+        return i + 1 < queue.count || (repeatMode == .all && !queue.isEmpty)
     }
 
     var hasPrevious: Bool {
@@ -81,7 +98,7 @@ final class PlayerManager: ObservableObject {
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.next() }
+            Task { @MainActor [weak self] in self?.playbackDidFinish() }
         }
         player.replaceCurrentItem(with: item)
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -96,12 +113,26 @@ final class PlayerManager: ObservableObject {
         updateNowPlayingElapsed()
     }
 
-    func next() {
-        guard let current, let i = queue.firstIndex(of: current), i + 1 < queue.count else {
-            isPlaying = false
+    /// Auto-advance when an episode finishes; honors the repeat mode.
+    private func playbackDidFinish() {
+        if repeatMode == .one {
+            seek(to: 0)
+            player.play()
+            isPlaying = true
             return
         }
-        load(queue[i + 1])
+        next()
+    }
+
+    func next() {
+        guard let current, let i = queue.firstIndex(of: current) else { return }
+        if i + 1 < queue.count {
+            load(queue[i + 1])
+        } else if repeatMode == .all, let first = queue.first {
+            load(first)
+        } else {
+            isPlaying = false
+        }
     }
 
     func previous() {
