@@ -1,0 +1,27 @@
+name: NerLan
+options:
+  bundleIdPrefix: com.danielkao
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  NerLan:
+    type: application
+    platform: iOS
+    sources:
+      - NerLan/Sources
+    info:
+      path: NerLan/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: NerLan
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3WD42GF27D
+        GENERATE_INFOPLIST_FILE: NO
