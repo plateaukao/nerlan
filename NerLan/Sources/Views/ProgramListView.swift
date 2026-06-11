@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// Browse language-learning programs, filterable by language.
-/// The full catalog (~68 programs) loads in one request; the language
-/// chips come from the loaded data, so filtering is instant and every
-/// chip is guaranteed to have programs.
+/// The full Channel+ catalog (~96 programs) loads in one request and is
+/// grouped by language client-side, so the chips filter instantly.
 struct ProgramListView: View {
     @State private var groups: [LanguageGroup] = []
     @State private var selectedLanguage: String?
@@ -37,15 +36,13 @@ struct ProgramListView: View {
     private var list: some View {
         List {
             Section {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        languageChip(nil, label: "全部")
-                        ForEach(languages, id: \.self) { lang in
-                            languageChip(lang, label: lang)
-                        }
+                FlowLayout(spacing: 8) {
+                    languageChip(nil, label: "全部")
+                    ForEach(languages, id: \.self) { lang in
+                        languageChip(lang, label: lang)
                     }
-                    .padding(.vertical, 2)
                 }
+                .padding(.vertical, 2)
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 .listRowSeparator(.hidden)
             }
@@ -89,18 +86,15 @@ struct ProgramListView: View {
         isLoading = true
         errorMessage = nil
         do {
-            // The API can return the same language in multiple groups; merge them.
-            var merged: [LanguageGroup] = []
-            for group in try await NERAPI.programList() {
-                if let i = merged.firstIndex(where: { $0.language == group.language }) {
-                    let known = Set(merged[i].programs.map(\.id))
-                    let added = group.programs.filter { !known.contains($0.id) }
-                    merged[i] = LanguageGroup(language: group.language, programs: merged[i].programs + added)
-                } else {
-                    merged.append(group)
-                }
+            let programs = try await ChannelPlusAPI.programs()
+            var order: [String] = []
+            var byLanguage: [String: [Program]] = [:]
+            for program in programs {
+                let lang = program.language
+                if byLanguage[lang] == nil { order.append(lang) }
+                byLanguage[lang, default: []].append(program)
             }
-            groups = merged
+            groups = order.map { LanguageGroup(language: $0, programs: byLanguage[$0]!) }
         } catch {
             groups = []
             errorMessage = error.localizedDescription
@@ -109,15 +103,67 @@ struct ProgramListView: View {
     }
 }
 
+/// Wraps subviews into as many rows as needed, like tags in a tag cloud.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = layoutRows(maxWidth: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.last.map { $0.y + $0.height } ?? 0
+        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = layoutRows(maxWidth: bounds.width, subviews: subviews)
+        for row in rows {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: bounds.minY + row.y),
+                                      proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var y: CGFloat = 0
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func layoutRows(maxWidth: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        var x: CGFloat = 0
+        for (i, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                rows.append(current)
+                current = Row(y: current.y + current.height + spacing)
+                x = 0
+            }
+            current.indices.append(i)
+            x += size.width + spacing
+            current.width = x - spacing
+            current.height = max(current.height, size.height)
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
+    }
+}
+
 struct ProgramRow: View {
     let program: Program
 
     var body: some View {
         HStack(spacing: 12) {
-            CoverImage(urlString: program.cover, size: 56)
+            CoverImage(urlString: program.coverURL?.absoluteString, size: 56)
             VStack(alignment: .leading, spacing: 4) {
                 Text(program.name)
                     .font(.body.weight(.medium))
+                    .lineLimit(2)
                 HStack(spacing: 6) {
                     if let level = program.level {
                         Text(level)
@@ -127,14 +173,11 @@ struct ProgramRow: View {
                             .background(Color.accentColor.opacity(0.15))
                             .clipShape(Capsule())
                     }
-                    Text(program.scheduleText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let hosts = program.hosts, !hosts.isEmpty {
-                    Text(hosts.map(\.name).joined(separator: "、"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let count = program.episodeCount {
+                        Text("共 \(count) 集")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

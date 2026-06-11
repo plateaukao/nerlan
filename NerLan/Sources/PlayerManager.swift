@@ -15,12 +15,24 @@ final class PlayerManager: ObservableObject {
     @Published var currentTime: Double = 0
     @Published private(set) var duration: Double = 0
 
+    static let availableRates: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+
+    @Published var playbackRate: Float = UserDefaults.standard.object(forKey: "playbackRate") as? Float ?? 1.0 {
+        didSet {
+            UserDefaults.standard.set(playbackRate, forKey: "playbackRate")
+            player.defaultRate = playbackRate
+            if isPlaying { player.rate = playbackRate }
+            updateNowPlayingElapsed()
+        }
+    }
+
     private let player = AVPlayer()
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
 
     private init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        player.defaultRate = playbackRate
         setupRemoteCommands()
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main
@@ -155,7 +167,7 @@ final class PlayerManager: ObservableObject {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 }

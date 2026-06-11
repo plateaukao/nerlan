@@ -13,9 +13,12 @@ struct ContentView: View {
             DownloadsView()
                 .tabItem { Label("下載", systemImage: "arrow.down.circle") }
         }
-        .safeAreaInset(edge: .bottom) {
+        // Float the mini player above the tab bar with an overlay:
+        // safeAreaInset over a List doesn't receive touches reliably.
+        .overlay(alignment: .bottom) {
             if player.current != nil {
                 MiniPlayerBar { showPlayer = true }
+                    .padding(.bottom, 49) // standard tab bar height
             }
         }
         .sheet(isPresented: $showPlayer) {
@@ -31,32 +34,40 @@ struct MiniPlayerBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CoverImage(urlString: player.current?.coverURL, size: 40)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(player.current?.title ?? "")
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                Text(player.current?.programName ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    CoverImage(urlString: player.current?.coverURL, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(player.current?.title ?? "")
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        Text(player.current?.programName ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
             Button { player.togglePlayPause() } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title3)
+                    .frame(width: 36, height: 36)
             }
+            .buttonStyle(.borderless)
             Button { player.next() } label: {
                 Image(systemName: "forward.fill")
                     .font(.title3)
+                    .frame(width: 36, height: 36)
             }
+            .buttonStyle(.borderless)
             .disabled(!player.hasNext)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
     }
 }
 

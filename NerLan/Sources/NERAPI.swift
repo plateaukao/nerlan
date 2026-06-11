@@ -1,9 +1,15 @@
 import Foundation
 
-/// Client for 國立教育廣播電台 (National Education Radio) language-learning API.
-/// Endpoints discovered from https://www.ner.gov.tw/LearnLanguage/ frontend bundles.
-enum NERAPI {
-    static let base = URL(string: "https://webapi.ner.gov.tw/nerwebFront")!
+/// Client for 國立教育廣播電台 Channel+ (https://channelplus.ner.gov.tw).
+/// Unlike the www.ner.gov.tw LearnLanguage API (current-month episodes only),
+/// Channel+ serves the full on-demand archive of every program, with direct
+/// MP3 audio. Endpoints discovered from the site's Nuxt bundles and CDP
+/// network capture.
+enum ChannelPlusAPI {
+    static let base = URL(string: "https://channelplus.ner.gov.tw/api/v1")!
+
+    /// Language-learning programs are programType=2.
+    static let languageProgramType = 2
 
     enum APIError: LocalizedError {
         case server(String)
@@ -13,81 +19,42 @@ enum NERAPI {
         }
     }
 
-    private static func get<T: Decodable>(_ path: String, as type: T.Type) async throws -> APIResponse<T> {
-        let url = base.appendingPathComponent(path)
-        var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        // appendingPathComponent percent-encodes "?", so build query separately
-        if let qIndex = path.firstIndex(of: "?") {
-            comps = URLComponents(url: base.appendingPathComponent(String(path[..<qIndex])), resolvingAgainstBaseURL: false)!
-            comps.query = String(path[path.index(after: qIndex)...])
-        }
-        let (data, _) = try await URLSession.shared.data(from: comps.url!)
-        return try JSONDecoder().decode(APIResponse<T>.self, from: data)
+    static func audioURL(_ voiceRef: String?) -> URL? {
+        guard let voiceRef, !voiceRef.isEmpty else { return nil }
+        return URL(string: "\(base.absoluteString)/audio?key=\(voiceRef)")
     }
 
-    /// The server ignores JSON bodies; the site's axios wrapper sends multipart/form-data.
-    private static func post<T: Decodable>(_ path: String, fields: [String: String], as type: T.Type) async throws -> APIResponse<T> {
-        var req = URLRequest(url: base.appendingPathComponent(path))
-        req.httpMethod = "POST"
-        let boundary = "NerLanBoundary-\(UUID().uuidString)"
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        var body = Data()
-        for (name, value) in fields {
-            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
-        }
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        req.httpBody = body
+    static func imageURL(_ imageRef: String?) -> URL? {
+        guard let imageRef, !imageRef.isEmpty else { return nil }
+        return URL(string: "\(base.absoluteString)/image?key=\(imageRef)")
+    }
+
+    private static func get<T: Decodable>(_ pathAndQuery: String, as type: T.Type) async throws -> APIResponse<T> {
+        let url = URL(string: "\(base.absoluteString)/\(pathAndQuery)")!
+        var req = URLRequest(url: url)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, _) = try await URLSession.shared.data(for: req)
         return try JSONDecoder().decode(APIResponse<T>.self, from: data)
     }
 
     // MARK: - Endpoints
 
-    static func languageCategories() async throws -> [LanguageCategory] {
-        let resp = try await get("api/LanguageProgram/GetLanguageCategory", as: [LanguageCategory].self)
-        guard resp.success else { throw APIError.server(resp.message ?? "GetLanguageCategory failed") }
-        return resp.retData ?? []
+    /// All language-learning programs (currently ~96, single page).
+    static func programs() async throws -> [Program] {
+        let resp = try await get("programs?page=1&size=500&programType=\(languageProgramType)", as: [Program].self)
+        guard resp.success else { throw APIError.server(resp.rtnMsg ?? "programs failed") }
+        return resp.data ?? []
     }
 
-    static func languageLevels() async throws -> [LanguageLevel] {
-        let resp = try await get("api/LanguageProgram/GetLanguageLevel", as: [LanguageLevel].self)
-        guard resp.success else { throw APIError.server(resp.message ?? "GetLanguageLevel failed") }
-        return resp.retData ?? []
-    }
-
-    /// Returns programs grouped by language. The default pagesize covers the
-    /// whole catalog (~68 programs) in one request.
-    static func programList(keywords: String = "", languageId: String = "",
-                            levelId: String = "", page: Int = 1, pageSize: Int = 200)
-        async throws -> [LanguageGroup]
+    /// One page of a program's episode archive, oldest first
+    /// (ascending suits sequential language courses).
+    static func episodes(programId: String, page: Int, pageSize: Int = 50)
+        async throws -> (episodes: [Episode], totalPages: Int, totalCount: Int)
     {
-        let resp = try await post("api/LanguageProgram/GetLanguageProgramList",
-                                  fields: ["keyWords": keywords, "languageId": languageId,
-                                           "levelId": levelId, "pageindex": String(page),
-                                           "pagesize": String(pageSize)],
-                                  as: [LanguageGroup].self)
-        guard resp.success else { throw APIError.server(resp.message ?? "GetLanguageProgramList failed") }
-        return resp.retData ?? []
-    }
-
-    static func programInfo(id: String) async throws -> ProgramInfo {
-        let resp = try await get("api/LanguageEpisode/GetLanguageProgramInfo?languageProgramId=\(id)", as: ProgramInfo.self)
-        guard resp.success, let info = resp.retData else {
-            throw APIError.server(resp.message ?? "GetLanguageProgramInfo failed")
-        }
-        return info
-    }
-
-    /// Episodes are published per calendar month; pagesize must cover the number of days.
-    static func episodes(programId: String, year: Int, month: Int) async throws -> [Episode] {
-        let days = Calendar.current.range(of: .day, in: .month,
-                                          for: DateComponents(calendar: .current, year: year, month: month).date!)?.count ?? 31
         let resp = try await get(
-            "api/LanguageEpisode/GetLanguageEpisodeList?languageProgramId=\(programId)&year=\(year)&month=\(month)&pagesize=\(days)",
+            "programs/episodes/\(programId)?page=\(page)&size=\(pageSize)&sortOrder=ASC&sortField=episode_number",
             as: [Episode].self)
-        guard resp.success else { throw APIError.server(resp.message ?? "GetLanguageEpisodeList failed") }
-        return (resp.retData ?? []).sorted {
-            ($0.playDateValue ?? .distantPast) < ($1.playDateValue ?? .distantPast)
-        }
+        guard resp.success else { throw APIError.server(resp.rtnMsg ?? "episodes failed") }
+        return (resp.data ?? [], resp.pagination?.totalPages ?? 1, resp.pagination?.totalCount ?? 0)
     }
 }

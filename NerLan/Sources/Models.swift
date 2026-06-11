@@ -1,114 +1,109 @@
 import Foundation
 
-// MARK: - API envelope
+// MARK: - API envelope (Channel+)
 
 struct APIResponse<T: Decodable>: Decodable {
-    let success: Bool
-    let errorcode: Int?
-    let message: String?
-    let currentPage: Int?
-    let totalPage: Int?
-    let retData: T?
+    let rtnCode: String
+    let rtnMsg: String?
+    let data: T?
+    let pagination: Pagination?
+
+    var success: Bool { rtnCode == "0000" }
 }
 
-// MARK: - Language / level
-
-struct LanguageCategory: Decodable, Identifiable, Hashable {
-    let id: String
-    let name: String
+struct Pagination: Decodable {
+    let page: Int
+    let perPage: Int
+    let totalPages: Int
+    let totalCount: Int
 }
 
-struct LanguageLevel: Decodable, Identifiable, Hashable {
-    let id: String
+// MARK: - Shared fragments
+
+struct Tag: Codable, Identifiable, Hashable {
+    let tagId: String
     let name: String
+    var id: String { tagId }
+}
+
+struct ImageRef: Codable, Hashable {
+    let imageRef: String?
+}
+
+struct VoiceRef: Codable, Hashable {
+    let voiceRef: String?
+}
+
+struct LanguageTags: Codable, Hashable {
+    let contentLanguage: [Tag]?
+    let contentLevel: [Tag]?
 }
 
 // MARK: - Programs
 
-struct Host: Decodable, Identifiable, Hashable {
-    let id: String
+struct Program: Codable, Identifiable, Hashable {
+    let programId: String
     let name: String
-    let imgUrl: String?
-}
+    let description: String?
+    let image: ImageRef?
+    let episodeCount: Int?
+    let languageTags: LanguageTags?
 
-struct Program: Decodable, Identifiable, Hashable {
-    let id: String
-    let name: String
-    let cover: String?
-    let playDate: String?
-    let startPlayTime: String?
-    let endPlayTime: String?
-    let language: String?
-    let level: String?
-    let hosts: [Host]?
+    var id: String { programId }
+    var language: String { languageTags?.contentLanguage?.first?.name ?? "其他" }
+    var level: String? { languageTags?.contentLevel?.first?.name }
+    var coverURL: URL? { ChannelPlusAPI.imageURL(image?.imageRef) }
 
-    var coverURL: URL? { cover.flatMap(URL.init(string:)) }
-
-    var scheduleText: String {
-        var parts: [String] = []
-        if let playDate, !playDate.isEmpty { parts.append(playDate) }
-        if let s = startPlayTime, let e = endPlayTime { parts.append("\(s)–\(e)") }
-        return parts.joined(separator: " ")
-    }
-}
-
-/// Program list response groups programs by language.
-struct LanguageGroup: Decodable, Identifiable {
-    let language: String
-    let programs: [Program]
-    var id: String { language }
-}
-
-struct ProgramInfo: Decodable {
-    let id: String
-    let name: String
-    let introduction: String?
-    let cover: String?
-    let startPlayTime: String?
-    let endPlayTime: String?
-    let englishName: String?
-    let hosts: [Host]?
-
-    var coverURL: URL? { cover.flatMap(URL.init(string:)) }
-
-    /// Introduction comes back as HTML; strip tags for display.
-    var introductionText: String {
-        guard let introduction else { return "" }
-        return introduction
+    /// Description comes back as HTML; strip tags for display.
+    var descriptionText: String {
+        guard let description else { return "" }
+        return description
             .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .replacingOccurrences(of: "&nbsp;", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
+/// Programs grouped by language for the browse list.
+struct LanguageGroup: Identifiable {
+    let language: String
+    let programs: [Program]
+    var id: String { language }
+}
+
 // MARK: - Episodes
 
 struct Episode: Decodable, Identifiable, Hashable {
-    let id: String
-    let programId: String
-    let programName: String?
+    let episodeId: String
     let title: String?
-    let playDate: String?
-    let onShelf: Bool?
-    let audio: String?
+    let duration: Int?
+    let episodeNumber: Int?
+    let releaseDate: String?
+    let voice: VoiceRef?
+    let image: ImageRef?
 
-    var audioURL: URL? { audio.flatMap(URL.init(string:)) }
+    var id: String { episodeId }
     var displayTitle: String { title ?? "（無標題）" }
+    var audioURL: URL? { ChannelPlusAPI.audioURL(voice?.voiceRef) }
 
-    var playDateValue: Date? {
-        guard let playDate else { return nil }
-        return Episode.dateFormatter.date(from: playDate)
+    var releaseDateValue: Date? {
+        guard let releaseDate else { return nil }
+        return Episode.isoFormatter.date(from: releaseDate)
     }
 
-    var playDateText: String {
-        guard let d = playDateValue else { return "" }
+    var releaseDateText: String {
+        guard let d = releaseDateValue else { return "" }
         return Episode.displayFormatter.string(from: d)
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        f.locale = Locale(identifier: "en_US_POSIX")
+    var durationText: String {
+        guard let duration, duration > 0 else { return "" }
+        return String(format: "%d:%02d", duration / 60, duration % 60)
+    }
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
@@ -126,26 +121,22 @@ struct Episode: Decodable, Identifiable, Hashable {
 struct EpisodeRecord: Codable, Identifiable, Hashable {
     let id: String          // episode id
     let title: String
-    let playDate: String?   // raw API date string
-    let audio: String?      // remote stream URL
+    let playDate: String?   // raw API date string (sortable)
+    let audio: String?      // remote audio URL
     let programId: String
     let programName: String
     let language: String
     let coverURL: String?
 
-    init(episode: Episode, programName: String, language: String, coverURL: String?) {
-        self.id = episode.id
+    init(episode: Episode, programId: String, programName: String,
+         language: String, coverURL: String?) {
+        self.id = episode.episodeId
         self.title = episode.displayTitle
-        self.playDate = episode.playDate
-        self.audio = episode.audio
-        self.programId = episode.programId
+        self.playDate = episode.releaseDate
+        self.audio = episode.audioURL?.absoluteString
+        self.programId = programId
         self.programName = programName
         self.language = language
         self.coverURL = coverURL
-    }
-
-    var episode: Episode {
-        Episode(id: id, programId: programId, programName: programName,
-                title: title, playDate: playDate, onShelf: true, audio: audio)
     }
 }

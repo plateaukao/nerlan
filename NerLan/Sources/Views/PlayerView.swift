@@ -87,9 +87,25 @@ struct PlayerView: View {
                 .disabled(!player.hasNext)
             }
 
-            // Favorite / download
+            // Speed / favorite / download
             if let record = player.current {
                 HStack(spacing: 48) {
+                    Menu {
+                        ForEach(PlayerManager.availableRates, id: \.self) { rate in
+                            Button {
+                                player.playbackRate = rate
+                            } label: {
+                                if rate == player.playbackRate {
+                                    Label(rateLabel(rate), systemImage: "checkmark")
+                                } else {
+                                    Text(rateLabel(rate))
+                                }
+                            }
+                        }
+                    } label: {
+                        Label(rateLabel(player.playbackRate), systemImage: "gauge.with.needle")
+                    }
+
                     Button {
                         favorites.toggle(record)
                     } label: {
@@ -118,6 +134,10 @@ struct PlayerView: View {
             Spacer()
         }
         .presentationDetents([.large])
+    }
+
+    private func rateLabel(_ rate: Float) -> String {
+        rate == rate.rounded() ? String(format: "%.0f×", rate) : String(format: "%g×", rate)
     }
 
     private func timeString(_ seconds: Double) -> String {

@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Favorited episodes grouped by program.
+/// Favorited programs and episodes.
 struct FavoritesView: View {
     @EnvironmentObject var favorites: FavoritesStore
     @EnvironmentObject var player: PlayerManager
 
-    private var grouped: [(key: String, records: [EpisodeRecord])] {
+    private var groupedEpisodes: [(key: String, records: [EpisodeRecord])] {
         Dictionary(grouping: favorites.favorites, by: \.programName)
             .map { (key: $0.key, records: $0.value.sorted { ($0.playDate ?? "") < ($1.playDate ?? "") }) }
             .sorted { $0.key < $1.key }
@@ -14,13 +14,27 @@ struct FavoritesView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if favorites.favorites.isEmpty {
-                    ContentUnavailableView("沒有收藏的單集",
+                if favorites.favorites.isEmpty && favorites.programs.isEmpty {
+                    ContentUnavailableView("沒有收藏",
                                            systemImage: "heart",
-                                           description: Text("點選單集旁的愛心即可加入收藏。"))
+                                           description: Text("點選節目或單集旁的愛心即可加入收藏。"))
                 } else {
                     List {
-                        ForEach(grouped, id: \.key) { group in
+                        if !favorites.programs.isEmpty {
+                            Section("節目") {
+                                ForEach(favorites.programs) { program in
+                                    NavigationLink(value: program) {
+                                        ProgramRow(program: program)
+                                    }
+                                }
+                                .onDelete { offsets in
+                                    for i in offsets {
+                                        favorites.toggle(program: favorites.programs[i])
+                                    }
+                                }
+                            }
+                        }
+                        ForEach(groupedEpisodes, id: \.key) { group in
                             Section(group.key) {
                                 ForEach(group.records) { record in
                                     RecordRow(record: record, queue: group.records)
@@ -36,6 +50,9 @@ struct FavoritesView: View {
                 }
             }
             .navigationTitle("收藏")
+            .navigationDestination(for: Program.self) { program in
+                ProgramDetailView(program: program)
+            }
         }
     }
 }

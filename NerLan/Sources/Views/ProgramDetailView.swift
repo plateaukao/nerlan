@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Program info plus its episodes, browsable by month.
+/// Program info plus its full episode archive (paginated, oldest first).
 struct ProgramDetailView: View {
     let program: Program
 
@@ -8,19 +8,12 @@ struct ProgramDetailView: View {
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var favorites: FavoritesStore
 
-    @State private var info: ProgramInfo?
     @State private var episodes: [Episode] = []
-    @State private var year: Int
-    @State private var month: Int
+    @State private var page = 0
+    @State private var totalPages = 1
+    @State private var totalCount = 0
     @State private var isLoading = false
     @State private var showFullIntro = false
-
-    init(program: Program) {
-        self.program = program
-        let now = Calendar.current.dateComponents([.year, .month], from: Date())
-        _year = State(initialValue: now.year ?? 2026)
-        _month = State(initialValue: now.month ?? 1)
-    }
 
     var body: some View {
         List {
@@ -30,13 +23,10 @@ struct ProgramDetailView: View {
             }
 
             Section {
-                monthPicker
-                    .listRowSeparator(.hidden)
-
-                if isLoading {
+                if episodes.isEmpty && isLoading {
                     HStack { Spacer(); ProgressView(); Spacer() }
                 } else if episodes.isEmpty {
-                    Text("本月沒有單集")
+                    Text("沒有單集")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else {
@@ -44,42 +34,67 @@ struct ProgramDetailView: View {
                         EpisodeRow(episode: episode,
                                    record: record(for: episode),
                                    queue: episodes.map(record(for:)))
+                            .onAppear {
+                                // infinite scroll: fetch the next page near the end
+                                if episode.id == episodes.last?.id {
+                                    Task { await loadMore() }
+                                }
+                            }
+                    }
+                    if isLoading {
+                        HStack { Spacer(); ProgressView(); Spacer() }
+                            .listRowSeparator(.hidden)
                     }
                 }
             } header: {
-                Text("單集列表")
+                Text(totalCount > 0 ? "單集列表（共 \(totalCount) 集）" : "單集列表")
             }
         }
         .listStyle(.plain)
         .navigationTitle(program.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            info = try? await NERAPI.programInfo(id: program.id)
-            await loadEpisodes()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    favorites.toggle(program: program)
+                } label: {
+                    Image(systemName: favorites.isFavorite(programId: program.programId) ? "heart.fill" : "heart")
+                        .foregroundStyle(.pink)
+                }
+            }
         }
+        .task { if episodes.isEmpty { await loadMore() } }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
-                CoverImage(urlString: info?.cover ?? program.cover, size: 88)
+                CoverImage(urlString: program.coverURL?.absoluteString, size: 88)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(info?.name ?? program.name)
+                    Text(program.name)
                         .font(.headline)
-                    if let en = info?.englishName {
-                        Text(en).font(.subheadline).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text(program.language)
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.15))
+                            .clipShape(Capsule())
+                        if let level = program.level {
+                            Text(level)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text(program.scheduleText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let hosts = info?.hosts, !hosts.isEmpty {
-                        Text("主持：" + hosts.map(\.name).joined(separator: "、"))
+                    if let count = program.episodeCount {
+                        Text("共 \(count) 集")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            if let intro = info?.introductionText, !intro.isEmpty {
+            let intro = program.descriptionText
+            if !intro.isEmpty {
                 Text(intro)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -90,44 +105,29 @@ struct ProgramDetailView: View {
         .padding(.vertical, 4)
     }
 
-    private var monthPicker: some View {
-        HStack {
-            Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
-            Spacer()
-            Text(String(format: "%d 年 %d 月", year, month))
-                .font(.subheadline.weight(.medium))
-            Spacer()
-            Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
-                .disabled(isCurrentMonth)
-        }
-        .buttonStyle(.borderless)
-    }
-
-    private var isCurrentMonth: Bool {
-        let now = Calendar.current.dateComponents([.year, .month], from: Date())
-        return year == now.year && month == now.month
-    }
-
-    private func shiftMonth(_ delta: Int) {
-        var m = month + delta
-        var y = year
-        if m < 1 { m = 12; y -= 1 }
-        if m > 12 { m = 1; y += 1 }
-        (year, month) = (y, m)
-        Task { await loadEpisodes() }
-    }
-
-    private func loadEpisodes() async {
+    private func loadMore() async {
+        guard !isLoading, page < totalPages || page == 0 else { return }
         isLoading = true
-        episodes = (try? await NERAPI.episodes(programId: program.id, year: year, month: month)) ?? []
+        do {
+            let next = page + 1
+            let result = try await ChannelPlusAPI.episodes(programId: program.programId, page: next)
+            let known = Set(episodes.map(\.id))
+            episodes += result.episodes.filter { !known.contains($0.id) }
+            page = next
+            totalPages = result.totalPages
+            totalCount = result.totalCount
+        } catch {
+            // keep what we have; pull-to-refresh isn't offered here, retry happens on next scroll
+        }
         isLoading = false
     }
 
     private func record(for episode: Episode) -> EpisodeRecord {
         EpisodeRecord(episode: episode,
-                      programName: info?.name ?? program.name,
-                      language: program.language ?? "",
-                      coverURL: info?.cover ?? program.cover)
+                      programId: program.programId,
+                      programName: program.name,
+                      language: program.language,
+                      coverURL: (ChannelPlusAPI.imageURL(episode.image?.imageRef) ?? program.coverURL)?.absoluteString)
     }
 }
 
@@ -163,9 +163,17 @@ struct EpisodeRow: View {
                             .font(.subheadline)
                             .foregroundStyle(isCurrent ? Color.accentColor : .primary)
                             .lineLimit(2)
-                        Text(episode.playDateText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            if let n = episode.episodeNumber {
+                                Text("EP\(n)")
+                            }
+                            Text(episode.releaseDateText)
+                            if !episode.durationText.isEmpty {
+                                Text(episode.durationText)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
