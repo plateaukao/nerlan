@@ -1,19 +1,22 @@
 import SwiftUI
 
 /// Browse language-learning programs, filterable by language.
+/// The full catalog (~68 programs) loads in one request; the language
+/// chips come from the loaded data, so filtering is instant and every
+/// chip is guaranteed to have programs.
 struct ProgramListView: View {
-    @State private var categories: [LanguageCategory] = []
     @State private var groups: [LanguageGroup] = []
-    @State private var selectedLanguage: LanguageCategory?
-    @State private var page = 1
-    @State private var totalPage = 1
+    @State private var selectedLanguage: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    /// The API's languageId filter is unreliable, so filter client-side too.
+    private var languages: [String] {
+        groups.map(\.language)
+    }
+
     private var visibleGroups: [LanguageGroup] {
-        guard let selected = selectedLanguage else { return groups }
-        return groups.filter { $0.language == selected.name }
+        guard let selectedLanguage else { return groups }
+        return groups.filter { $0.language == selectedLanguage }
     }
 
     var body: some View {
@@ -26,7 +29,7 @@ struct ProgramListView: View {
                 }
             }
             .navigationTitle("語言學習")
-            .task { await initialLoad() }
+            .task { if groups.isEmpty { await reload() } }
             .refreshable { await reload() }
         }
     }
@@ -37,8 +40,8 @@ struct ProgramListView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         languageChip(nil, label: "全部")
-                        ForEach(categories) { cat in
-                            languageChip(cat, label: cat.name)
+                        ForEach(languages, id: \.self) { lang in
+                            languageChip(lang, label: lang)
                         }
                     }
                     .padding(.vertical, 2)
@@ -56,19 +59,6 @@ struct ProgramListView: View {
                     }
                 }
             }
-
-            if page < totalPage && selectedLanguage == nil {
-                Section {
-                    HStack {
-                        Spacer()
-                        if isLoading { ProgressView() } else {
-                            Button("載入更多") { Task { await loadMore() } }
-                        }
-                        Spacer()
-                    }
-                    .listRowSeparator(.hidden)
-                }
-            }
         }
         .listStyle(.insetGrouped)
         .navigationDestination(for: Program.self) { program in
@@ -79,11 +69,10 @@ struct ProgramListView: View {
         }
     }
 
-    private func languageChip(_ cat: LanguageCategory?, label: String) -> some View {
-        let isSelected = selectedLanguage == cat
+    private func languageChip(_ lang: String?, label: String) -> some View {
+        let isSelected = selectedLanguage == lang
         return Button {
-            selectedLanguage = cat
-            Task { await reload() }
+            selectedLanguage = lang
         } label: {
             Text(label)
                 .font(.subheadline)
@@ -96,53 +85,27 @@ struct ProgramListView: View {
         .buttonStyle(.plain)
     }
 
-    private func initialLoad() async {
-        guard groups.isEmpty else { return }
-        await reload()
-        categories = (try? await NERAPI.languageCategories()) ?? []
-    }
-
     private func reload() async {
-        page = 1
-        await fetch(reset: true)
-    }
-
-    private func loadMore() async {
-        page += 1
-        await fetch(reset: false)
-    }
-
-    private func fetch(reset: Bool) async {
         isLoading = true
         errorMessage = nil
         do {
-            // When filtering, fetch all pages so client-side filter sees everything.
-            let pageSize = selectedLanguage == nil ? 10 : 100
-            let result = try await NERAPI.programList(languageId: selectedLanguage?.id ?? "",
-                                                      page: page, pageSize: pageSize)
-            totalPage = result.totalPage
-            let merged = reset ? result.groups : mergeGroups(groups, result.groups)
+            // The API can return the same language in multiple groups; merge them.
+            var merged: [LanguageGroup] = []
+            for group in try await NERAPI.programList() {
+                if let i = merged.firstIndex(where: { $0.language == group.language }) {
+                    let known = Set(merged[i].programs.map(\.id))
+                    let added = group.programs.filter { !known.contains($0.id) }
+                    merged[i] = LanguageGroup(language: group.language, programs: merged[i].programs + added)
+                } else {
+                    merged.append(group)
+                }
+            }
             groups = merged
         } catch {
-            if reset { groups = [] }
+            groups = []
             errorMessage = error.localizedDescription
         }
         isLoading = false
-    }
-
-    /// Later pages can repeat a language section; merge programs into existing groups.
-    private func mergeGroups(_ existing: [LanguageGroup], _ new: [LanguageGroup]) -> [LanguageGroup] {
-        var result = existing
-        for group in new {
-            if let i = result.firstIndex(where: { $0.language == group.language }) {
-                let known = Set(result[i].programs.map(\.id))
-                let added = group.programs.filter { !known.contains($0.id) }
-                result[i] = LanguageGroup(language: group.language, programs: result[i].programs + added)
-            } else {
-                result.append(group)
-            }
-        }
-        return result
     }
 }
 

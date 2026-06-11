@@ -25,11 +25,18 @@ enum NERAPI {
         return try JSONDecoder().decode(APIResponse<T>.self, from: data)
     }
 
-    private static func post<T: Decodable>(_ path: String, body: [String: Any], as type: T.Type) async throws -> APIResponse<T> {
+    /// The server ignores JSON bodies; the site's axios wrapper sends multipart/form-data.
+    private static func post<T: Decodable>(_ path: String, fields: [String: String], as type: T.Type) async throws -> APIResponse<T> {
         var req = URLRequest(url: base.appendingPathComponent(path))
         req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let boundary = "NerLanBoundary-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        for (name, value) in fields {
+            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
         let (data, _) = try await URLSession.shared.data(for: req)
         return try JSONDecoder().decode(APIResponse<T>.self, from: data)
     }
@@ -48,17 +55,19 @@ enum NERAPI {
         return resp.retData ?? []
     }
 
-    /// Returns programs grouped by language, plus total page count.
+    /// Returns programs grouped by language. The default pagesize covers the
+    /// whole catalog (~68 programs) in one request.
     static func programList(keywords: String = "", languageId: String = "",
-                            levelId: String = "", page: Int = 1, pageSize: Int = 10)
-        async throws -> (groups: [LanguageGroup], totalPage: Int)
+                            levelId: String = "", page: Int = 1, pageSize: Int = 200)
+        async throws -> [LanguageGroup]
     {
         let resp = try await post("api/LanguageProgram/GetLanguageProgramList",
-                                  body: ["keyWords": keywords, "languageId": languageId,
-                                         "levelId": levelId, "pageindex": page, "pagesize": pageSize],
+                                  fields: ["keyWords": keywords, "languageId": languageId,
+                                           "levelId": levelId, "pageindex": String(page),
+                                           "pagesize": String(pageSize)],
                                   as: [LanguageGroup].self)
         guard resp.success else { throw APIError.server(resp.message ?? "GetLanguageProgramList failed") }
-        return (resp.retData ?? [], resp.totalPage ?? 1)
+        return resp.retData ?? []
     }
 
     static func programInfo(id: String) async throws -> ProgramInfo {
