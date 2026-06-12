@@ -3,3 +3,4 @@ DerivedData/
 *.xcresult
 .DS_Store
 .build/
+.claude/
