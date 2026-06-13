@@ -34,6 +34,28 @@ struct VoiceRef: Codable, Hashable {
     let voiceRef: String?
 }
 
+/// A downloadable file attached to an episode — typically a PDF handout (講義).
+struct Attachment: Codable, Identifiable, Hashable {
+    let originalName: String?
+    let fileType: String?
+    let attachmentKey: String
+
+    var id: String { attachmentKey }
+    var displayName: String { originalName ?? "附件" }
+
+    /// File extension to store/open the attachment with (defaults to pdf).
+    var fileExtension: String {
+        if let t = fileType, !t.isEmpty { return t.lowercased() }
+        if let name = originalName, let ext = name.split(separator: ".").last, name.contains(".") {
+            return ext.lowercased()
+        }
+        return "pdf"
+    }
+
+    var isPDF: Bool { fileExtension == "pdf" }
+    var remoteURL: URL? { ChannelPlusAPI.fileURL(attachmentKey) }
+}
+
 struct LanguageTags: Codable, Hashable {
     let contentLanguage: [Tag]?
     let contentLevel: [Tag]?
@@ -81,6 +103,7 @@ struct Episode: Decodable, Identifiable, Hashable {
     let releaseDate: String?
     let voice: VoiceRef?
     let image: ImageRef?
+    let attachments: [Attachment]?
 
     var id: String { episodeId }
     var displayTitle: String { title ?? "（無標題）" }
@@ -127,6 +150,10 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
     let programName: String
     let language: String
     let coverURL: String?
+    let attachments: [Attachment]?   // optional: records saved before this field decode fine
+
+    /// PDF attachments, the only kind we can render inline.
+    var pdfAttachments: [Attachment] { (attachments ?? []).filter(\.isPDF) }
 
     init(episode: Episode, programId: String, programName: String,
          language: String, coverURL: String?) {
@@ -138,5 +165,6 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.programName = programName
         self.language = language
         self.coverURL = coverURL
+        self.attachments = episode.attachments
     }
 }

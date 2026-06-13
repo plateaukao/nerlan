@@ -67,35 +67,50 @@ struct RecordRow: View {
     let queue: [EpisodeRecord]
 
     @EnvironmentObject var player: PlayerManager
+    @State private var showAttachment = false
 
     private var isCurrent: Bool { player.current?.id == record.id }
 
     var body: some View {
-        Button {
-            if isCurrent {
-                player.togglePlayPause()
-            } else {
-                player.play(record, in: queue)
-            }
-        } label: {
-            HStack(spacing: 12) {
-                CoverImage(urlString: record.coverURL, size: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(record.title)
-                        .font(.subheadline)
-                        .foregroundStyle(isCurrent ? Color.accentColor : .primary)
-                        .lineLimit(2)
-                    Text("\(record.programName) · \(record.language)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            Button {
+                if isCurrent {
+                    player.togglePlayPause()
+                } else {
+                    player.play(record, in: queue)
                 }
-                Spacer()
-                Image(systemName: isCurrent && player.isPlaying ? "speaker.wave.2.fill" : "play.fill")
-                    .foregroundStyle(Color.accentColor)
-                    .font(.caption)
+            } label: {
+                HStack(spacing: 12) {
+                    CoverImage(urlString: record.coverURL, size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(record.title)
+                            .font(.subheadline)
+                            .foregroundStyle(isCurrent ? Color.accentColor : .primary)
+                            .lineLimit(2)
+                        Text("\(record.programName) · \(record.language)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: isCurrent && player.isPlaying ? "speaker.wave.2.fill" : "play.fill")
+                        .foregroundStyle(Color.accentColor)
+                        .font(.caption)
+                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            if !record.pdfAttachments.isEmpty {
+                Button {
+                    showAttachment = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .sheet(isPresented: $showAttachment) {
+                    AttachmentView(title: record.title, attachments: record.pdfAttachments)
+                }
+            }
         }
-        .buttonStyle(.plain)
     }
 }

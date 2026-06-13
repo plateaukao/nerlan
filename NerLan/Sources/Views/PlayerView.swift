@@ -9,6 +9,7 @@ struct PlayerView: View {
 
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
+    @State private var showAttachment = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -121,6 +122,14 @@ struct PlayerView: View {
                             .foregroundStyle(.pink)
                     }
 
+                    if !record.pdfAttachments.isEmpty {
+                        Button {
+                            showAttachment = true
+                        } label: {
+                            Label("講義", systemImage: "info.circle")
+                        }
+                    }
+
                     if downloads.isDownloaded(episodeId: record.id) {
                         Label("已下載", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -141,6 +150,11 @@ struct PlayerView: View {
             Spacer()
         }
         .presentationDetents([.large])
+        .sheet(isPresented: $showAttachment) {
+            if let record = player.current {
+                AttachmentView(title: record.title, attachments: record.pdfAttachments)
+            }
+        }
     }
 
     private func rateLabel(_ rate: Float) -> String {

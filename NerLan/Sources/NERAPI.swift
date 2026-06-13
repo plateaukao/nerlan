@@ -29,6 +29,12 @@ enum ChannelPlusAPI {
         return URL(string: "\(base.absoluteString)/image?key=\(imageRef)")
     }
 
+    /// Episode attachments (PDF handouts etc.) are served from `file?key=`.
+    static func fileURL(_ attachmentKey: String?) -> URL? {
+        guard let attachmentKey, !attachmentKey.isEmpty else { return nil }
+        return URL(string: "\(base.absoluteString)/file?key=\(attachmentKey)")
+    }
+
     private static func get<T: Decodable>(_ pathAndQuery: String, as type: T.Type) async throws -> APIResponse<T> {
         let url = URL(string: "\(base.absoluteString)/\(pathAndQuery)")!
         var req = URLRequest(url: url)
