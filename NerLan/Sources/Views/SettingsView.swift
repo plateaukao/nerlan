@@ -25,11 +25,10 @@ struct SettingsView: View {
                 }
 
                 Section("模型") {
-                    LabeledContent("轉錄模型") {
-                        TextField(SettingsStore.defaultTranscriptionModel, text: $settings.transcriptionModel)
-                            .multilineTextAlignment(.trailing)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                    Picker("轉錄模型", selection: $settings.transcriptionModel) {
+                        ForEach(SettingsStore.transcriptionModelOptions, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
                     }
                     LabeledContent("講義模型") {
                         TextField(SettingsStore.defaultChatModel, text: $settings.chatModel)

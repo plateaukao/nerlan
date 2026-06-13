@@ -34,7 +34,15 @@ enum OpenAIService {
 
     /// Transcribe an audio file via `POST /audio/transcriptions` (multipart).
     /// `response_format=text` makes the response body the raw transcript.
-    static func transcribe(fileURL: URL, model: String, apiKey: String) async throws -> String {
+    ///
+    /// `prompt` biases Whisper's output script/vocabulary. These are bilingual
+    /// teaching programs (Mandarin host + foreign examples); without a prompt
+    /// Whisper locks onto the dominant language (Chinese) and collapses the
+    /// foreign speech into Chinese characters. Priming it with Traditional Chinese
+    /// plus a native-script sample of the target language keeps both intact —
+    /// build one with `transcriptionPrompt(for:)`.
+    static func transcribe(fileURL: URL, model: String, apiKey: String,
+                           prompt: String? = nil) async throws -> String {
         guard !apiKey.isEmpty else { throw APIError.missingKey }
 
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -52,6 +60,7 @@ enum OpenAIService {
         }
         field("model", model)
         field("response_format", "text")
+        if let prompt, !prompt.isEmpty { field("prompt", prompt) }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\n"
             .data(using: .utf8)!)
@@ -64,6 +73,39 @@ enum OpenAIService {
         try check(response, data)
         guard let text = String(data: data, encoding: .utf8) else { throw APIError.decode }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A Whisper `prompt` for a program's target `language` (the Chinese name from
+    /// `EpisodeRecord.language`, e.g. 日語/英語/韓語). Whisper treats the prompt as
+    /// preceding context, not an instruction, so we prime it with actual mixed
+    /// text: a Traditional-Chinese teaching sentence plus a short native-script
+    /// sample of the language, which nudges the decoder to keep 正體中文 for the
+    /// host and the original script for the foreign words.
+    static func transcriptionPrompt(for language: String) -> String {
+        let base = "這是一段以臺灣繁體中文（正體字）講解的語言教學廣播節目，主持人會穿插示範外語。"
+        let sample: String
+        if language.contains("日") {
+            sample = "日語例句：おはようございます。ありがとうございます。よろしくお願いします。"
+        } else if language.contains("英") {
+            sample = "English examples: Good morning. How are you today? Thank you very much."
+        } else if language.contains("韓") {
+            sample = "韓語例句：안녕하세요. 감사합니다. 맛있어요."
+        } else if language.contains("法") {
+            sample = "Exemples en français : Bonjour. Comment allez-vous ? Merci beaucoup."
+        } else if language.contains("德") {
+            sample = "Beispiele auf Deutsch: Guten Morgen. Wie geht es Ihnen? Danke schön."
+        } else if language.contains("西") {
+            sample = "Ejemplos en español: Buenos días. ¿Cómo está usted? Muchas gracias."
+        } else if language.contains("越") {
+            sample = "Ví dụ tiếng Việt: Xin chào. Bạn có khỏe không? Cảm ơn rất nhiều."
+        } else if language.contains("印尼") {
+            sample = "Contoh bahasa Indonesia: Selamat pagi. Apa kabar? Terima kasih banyak."
+        } else if language.contains("泰") {
+            sample = "ตัวอย่างภาษาไทย: สวัสดีครับ สบายดีไหม ขอบคุณมากครับ"
+        } else {
+            return base + "節目中會穿插「\(language)」教學，請保留該語言文字的原始樣貌。"
+        }
+        return base + sample
     }
 
     // MARK: - Handout (chat completion)

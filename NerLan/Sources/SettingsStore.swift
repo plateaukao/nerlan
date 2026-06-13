@@ -11,6 +11,11 @@ final class SettingsStore: ObservableObject {
     static let defaultChatModel = "gpt-4o"
     static let defaultTranscriptionModel = "whisper-1"
 
+    /// Selectable transcription models. whisper-1 collapses bilingual audio into
+    /// the dominant language; the gpt-4o-transcribe models handle code-switching
+    /// far better (see OpenAIService.transcribe).
+    static let transcriptionModelOptions = ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"]
+
     private static let keychainAccount = "openai-api-key"
     private static let chatModelKey = "openaiChatModel"
     private static let transcriptionModelKey = "openaiTranscriptionModel"

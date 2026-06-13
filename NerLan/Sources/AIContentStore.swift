@@ -82,7 +82,8 @@ final class AIContentStore: ObservableObject {
             jobs[k] = .running("轉錄中…")
             let prepared = await SpeechAudioExporter.export(source)
             let raw = try await OpenAIService.transcribe(
-                fileURL: prepared, model: settings.transcriptionModel, apiKey: settings.apiKey)
+                fileURL: prepared, model: settings.transcriptionModel, apiKey: settings.apiKey,
+                prompt: OpenAIService.transcriptionPrompt(for: record.language))
             cleanupTemp(prepared, original: source)
 
             // Re-segment into one sentence per line with the chat model. If that
