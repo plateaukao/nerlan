@@ -22,14 +22,111 @@ final class AIContentStore: ObservableObject {
 
     private let transcriptsDir: URL
     private let handoutsDir: URL
+    private let indexURL: URL
+    /// episode id -> readable name ("<program> - <title>"), used to give the
+    /// iCloud copies human-friendly folder names even for content generated
+    /// while sync was off (the in-memory `EpisodeRecord` is gone by then).
+    private var displayNames: [String: String] = [:]
 
     private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let aiDir = docs.appendingPathComponent("ai", isDirectory: true)
         transcriptsDir = aiDir.appendingPathComponent("transcripts", isDirectory: true)
         handoutsDir = aiDir.appendingPathComponent("handouts", isDirectory: true)
+        indexURL = aiDir.appendingPathComponent("index.json")
         try? FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: handoutsDir, withIntermediateDirectories: true)
+
+        loadIndex()
+        backfillIndex()
+
+        // Files pulled from iCloud appear/disappear under us; refresh the
+        // hasTranscript/hasHandout-driven UI when that happens.
+        ICloudSync.shared.onDidPull = { [weak self] in
+            Task { @MainActor in self?.objectWillChange.send() }
+        }
+        if SettingsStore.shared.syncToICloud { enableICloudSync() }
+    }
+
+    /// Whether the user has opted into mirroring AI content to iCloud.
+    private var syncOn: Bool { SettingsStore.shared.syncToICloud }
+
+    private func cloudKind(_ kind: Kind) -> ICloudSync.Kind {
+        kind == .transcript ? .transcript : .handout
+    }
+
+    // MARK: - iCloud sync
+
+    /// Start watching for incoming files and push everything we already have up
+    /// (with readable names). Called at launch when enabled and when the user
+    /// flips the toggle on.
+    func enableICloudSync() {
+        ICloudSync.shared.start()
+        for kind in [Kind.transcript, .handout] {
+            let dir = kind == .transcript ? transcriptsDir : handoutsDir
+            let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.pathExtension == cloudKind(kind).localExt {
+                let id = file.deletingPathExtension().lastPathComponent
+                ICloudSync.shared.mirrorUp(cloudKind(kind), id: id, displayName: displayNames[id])
+            }
+        }
+    }
+
+    func disableICloudSync() {
+        ICloudSync.shared.stop()
+    }
+
+    // MARK: - Readable-name index
+
+    private func loadIndex() {
+        if let data = try? Data(contentsOf: indexURL),
+           let map = try? JSONDecoder().decode([String: String].self, from: data) {
+            displayNames = map
+        }
+    }
+
+    private func persistIndex() {
+        try? JSONEncoder().encode(displayNames).write(to: indexURL)
+    }
+
+    private func noteDisplayName(_ record: EpisodeRecord) {
+        let name = Self.displayName(record)
+        guard displayNames[record.id] != name else { return }
+        displayNames[record.id] = name
+        persistIndex()
+    }
+
+    /// Name content generated before the index existed, using whatever episode
+    /// records downloads/favorites still hold.
+    private func backfillIndex() {
+        var known: [String: String] = [:]
+        for r in DownloadManager.shared.records { known[r.id] = Self.displayName(r) }
+        for r in FavoritesStore.shared.favorites { known[r.id] = Self.displayName(r) }
+        var changed = false
+        for id in storedContentIds() where displayNames[id] == nil {
+            if let name = known[id] { displayNames[id] = name; changed = true }
+        }
+        if changed { persistIndex() }
+    }
+
+    private func storedContentIds() -> Set<String> {
+        var ids = Set<String>()
+        for dir in [transcriptsDir, handoutsDir] {
+            let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            for item in items { ids.insert(item.deletingPathExtension().lastPathComponent) }
+        }
+        return ids
+    }
+
+    static func displayName(_ record: EpisodeRecord) -> String {
+        let program = record.programName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = record.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch (program.isEmpty, title.isEmpty) {
+        case (false, false): return "\(program) - \(title)"
+        case (false, true): return program
+        case (true, false): return title
+        case (true, true): return record.id
+        }
     }
 
     // MARK: - Storage queries
@@ -62,6 +159,9 @@ final class AIContentStore: ObservableObject {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for item in items { try? FileManager.default.removeItem(at: item) }
         }
+        if syncOn { ICloudSync.shared.removeAllUp() }
+        displayNames.removeAll()
+        persistIndex()
         jobs.removeAll()
     }
 
@@ -71,6 +171,7 @@ final class AIContentStore: ObservableObject {
         objectWillChange.send()
         let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
         try? FileManager.default.removeItem(at: url)
+        if syncOn { ICloudSync.shared.removeUp(cloudKind(kind), id: id) }
         jobs.removeValue(forKey: key(kind, id))
     }
 
@@ -120,6 +221,8 @@ final class AIContentStore: ObservableObject {
                 raw, model: settings.chatModel, apiKey: settings.apiKey)) ?? raw
 
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
+            noteDisplayName(record)
+            if syncOn { ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)   // publishes → hasTranscript-driven UI refreshes
             return text
         } catch {
@@ -145,6 +248,8 @@ final class AIContentStore: ObservableObject {
                 model: settings.chatModel, apiKey: settings.apiKey)
             let html = Self.wrapHTML(fragment, title: record.title)
             try html.data(using: .utf8)?.write(to: handoutURL(record.id))
+            noteDisplayName(record)
+            if syncOn { ICloudSync.shared.mirrorUp(.handout, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)
         } catch {
             jobs[k] = .failed(error.localizedDescription)

@@ -20,6 +20,7 @@ final class SettingsStore: ObservableObject {
     private static let chatModelKey = "openaiChatModel"
     private static let transcriptionModelKey = "openaiTranscriptionModel"
     private static let cacheStreamedAudioKey = "cacheStreamedAudio"
+    private static let syncToICloudKey = "syncAIContentToICloud"
 
     @Published var apiKey: String {
         didSet { Keychain.set(apiKey, account: Self.keychainAccount) }
@@ -40,6 +41,19 @@ final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(cacheStreamedAudio, forKey: Self.cacheStreamedAudioKey) }
     }
 
+    /// When on, AI transcripts and handouts are mirrored to the app's iCloud
+    /// container (see `ICloudSync`) so they survive reinstalls and sync across
+    /// the user's devices. Off by default; audio is never synced.
+    @Published var syncToICloud: Bool {
+        didSet {
+            UserDefaults.standard.set(syncToICloud, forKey: Self.syncToICloudKey)
+            // AIContentStore owns the readable names, so it drives enable (which
+            // both starts the watcher and uploads existing content) / disable.
+            if syncToICloud { AIContentStore.shared.enableICloudSync() }
+            else { AIContentStore.shared.disableICloudSync() }
+        }
+    }
+
     /// Drives the visibility of the AI action icons.
     var hasAPIKey: Bool {
         !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -52,5 +66,6 @@ final class SettingsStore: ObservableObject {
         transcriptionModel = UserDefaults.standard.string(forKey: Self.transcriptionModelKey)
             ?? Self.defaultTranscriptionModel
         cacheStreamedAudio = UserDefaults.standard.bool(forKey: Self.cacheStreamedAudioKey)
+        syncToICloud = UserDefaults.standard.bool(forKey: Self.syncToICloudKey)
     }
 }

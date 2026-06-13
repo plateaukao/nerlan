@@ -11,17 +11,35 @@ targets:
       - NerLan/Sources
       - path: NerLan/Resources/Assets.xcassets
         buildPhase: resources
+    entitlements:
+      path: NerLan/Resources/NerLan.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.danielkao.NerLan
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.danielkao.NerLan
     info:
       path: NerLan/Resources/Info.plist
       properties:
         CFBundleDisplayName: NerLan
         CFBundleShortVersionString: "1.1"
-        CFBundleVersion: "2"
+        CFBundleVersion: "3"
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: false
+        # Surface the iCloud container as a "NerLan" folder in the Files app so
+        # the user can browse/export synced transcripts & handouts. Bump
+        # CFBundleVersion whenever these keys change — iOS only re-reads the
+        # container metadata on a higher build number.
+        NSUbiquitousContainers:
+          iCloud.com.danielkao.NerLan:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: NerLan
+            NSUbiquitousContainerSupportedFolderLevels: Any
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"

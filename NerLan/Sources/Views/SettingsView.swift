@@ -55,6 +55,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("同步到 iCloud", isOn: $settings.syncToICloud)
+                } header: {
+                    Text("iCloud 同步")
+                } footer: {
+                    Text("開啟後，逐字稿與 AI 講義會備份到 iCloud，並同步到你登入相同 Apple ID 的其他裝置（重新安裝後也會自動復原）。音檔不會同步。需登入 iCloud 並開啟 iCloud 雲碟。")
+                }
+
+                Section {
                     Button("清除所有 AI 內容", role: .destructive) {
                         showClearConfirm = true
                     }
