@@ -39,6 +39,17 @@ struct AIActionButton: View {
             label(running: running, ready: ready, failed: failure != nil)
         }
         .buttonStyle(.borderless)
+        .contextMenu {
+            if ready || failure != nil {
+                Button {
+                    pendingOpen = false
+                    ai.regenerate(storeKind, record)
+                } label: { Label("重新產生", systemImage: "arrow.clockwise") }
+                Button(role: .destructive) {
+                    ai.delete(storeKind, record.id)
+                } label: { Label("刪除\(title)", systemImage: "trash") }
+            }
+        }
         .onChange(of: ready) { _, isReady in
             if isReady, pendingOpen { pendingOpen = false; showSheet = true }
         }

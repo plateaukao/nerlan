@@ -65,6 +65,24 @@ final class AIContentStore: ObservableObject {
         jobs.removeAll()
     }
 
+    /// Delete one episode's saved content of `kind`. `objectWillChange` fires so
+    /// the action button drops back to its idle state.
+    func delete(_ kind: Kind, _ id: String) {
+        objectWillChange.send()
+        let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
+        try? FileManager.default.removeItem(at: url)
+        jobs.removeValue(forKey: key(kind, id))
+    }
+
+    /// Delete the saved content and immediately re-run it with current settings.
+    func regenerate(_ kind: Kind, _ record: EpisodeRecord) {
+        delete(kind, record.id)
+        switch kind {
+        case .transcript: processTranscript(record)
+        case .handout: processHandout(record)
+        }
+    }
+
     // MARK: - Work
 
     /// Transcribe (idempotent). Returns the transcript text, or nil on failure
@@ -94,7 +112,8 @@ final class AIContentStore: ObservableObject {
             }
             let raw = parts.joined(separator: "\n")
 
-            // Re-segment into one sentence per line with the chat model. If that
+            // Re-segment into one sentence per line with the chat model (adds
+            // sentence-ending punctuation only, never alters content). If that
             // step fails, keep the raw transcript so the paid transcription isn't lost.
             jobs[k] = .running("整理句子中…")
             let text = (try? await OpenAIService.segmentTranscript(
