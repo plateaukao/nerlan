@@ -46,6 +46,11 @@ final class PlayerManager: ObservableObject {
     private let player = AVPlayer()
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    /// The caching item currently streaming (when cache-on-stream is enabled),
+    /// plus the episode it belongs to, so its completed buffer is saved under the
+    /// right id. Only one is ever live — the previous one is stopped on each load.
+    private var cachingItem: CachingPlayerItem?
+    private var cachingEpisodeId: String?
 
     private init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
@@ -81,12 +86,27 @@ final class PlayerManager: ObservableObject {
     }
 
     private func load(_ record: EpisodeRecord) {
-        // Prefer the offline copy when one exists.
-        let asset: AVURLAsset
-        if let local = DownloadManager.shared.localAssetURL(episodeId: record.id) {
-            asset = AVURLAsset(url: local)
+        // Discard any still-streaming caching item from the previous episode.
+        cachingItem?.stopDownloading()
+        cachingItem = nil
+        cachingEpisodeId = nil
+
+        // Prefer an offline copy — an explicit download first, then a streamed
+        // cache copy — and only then stream from the network.
+        let item: AVPlayerItem
+        if let local = DownloadManager.shared.localAssetURL(episodeId: record.id)
+            ?? DownloadManager.shared.cachedAssetURL(episodeId: record.id) {
+            item = AVPlayerItem(asset: AVURLAsset(url: local))
         } else if let remote = record.audio.flatMap(URL.init(string:)) {
-            asset = AVURLAsset(url: remote)
+            if SettingsStore.shared.cacheStreamedAudio {
+                let caching = CachingPlayerItem(url: remote)
+                caching.cacheDelegate = self
+                cachingItem = caching
+                cachingEpisodeId = record.id
+                item = caching
+            } else {
+                item = AVPlayerItem(asset: AVURLAsset(url: remote))
+            }
         } else {
             return
         }
@@ -94,7 +114,6 @@ final class PlayerManager: ObservableObject {
         duration = 0
         currentTime = 0
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-        let item = AVPlayerItem(asset: asset)
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
@@ -200,5 +219,14 @@ final class PlayerManager: ObservableObject {
         if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+}
+
+extension PlayerManager: CachingPlayerItemDelegate {
+    nonisolated func cachingPlayerItem(_ item: CachingPlayerItem, didFinishDownloading data: Data) {
+        Task { @MainActor [weak self] in
+            guard let self, item === self.cachingItem, let id = self.cachingEpisodeId else { return }
+            DownloadManager.shared.storeCachedAudio(data, episodeId: id)
+        }
     }
 }

@@ -25,15 +25,22 @@ final class DownloadManager: NSObject, ObservableObject {
     private let recordsURL: URL
     private let audioDir: URL
     private let attachmentsDir: URL
+    /// Audio captured while streaming (opt-in). Kept separate from explicit
+    /// downloads: it lives in Caches (purgeable, not iCloud-backed), never shows
+    /// in the Downloads tab, and is wiped as a unit by "clear cached audio".
+    private let cacheDir: URL
 
     override private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         recordsURL = docs.appendingPathComponent("downloads.json")
         audioDir = docs.appendingPathComponent("audio", isDirectory: true)
         attachmentsDir = docs.appendingPathComponent("attachments", isDirectory: true)
+        cacheDir = caches.appendingPathComponent("audio", isDirectory: true)
         super.init()
         try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: attachmentsDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
         if let data = try? Data(contentsOf: recordsURL),
            let saved = try? JSONDecoder().decode([EpisodeRecord].self, from: data) {
@@ -63,6 +70,39 @@ final class DownloadManager: NSObject, ObservableObject {
     func localAssetURL(episodeId: String) -> URL? {
         let url = fileURL(episodeId: episodeId)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    // MARK: - Streamed-audio cache
+
+    private func cacheFileURL(episodeId: String) -> URL {
+        cacheDir.appendingPathComponent("\(episodeId).mp3")
+    }
+
+    /// A copy captured while streaming, if one exists. Used by the player after an
+    /// explicit download but before falling back to the network.
+    func cachedAssetURL(episodeId: String) -> URL? {
+        let url = cacheFileURL(episodeId: episodeId)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Persist a fully-streamed episode. No-op if it's already an explicit
+    /// download (that copy takes precedence and shouldn't be duplicated).
+    func storeCachedAudio(_ data: Data, episodeId: String) {
+        guard !isDownloaded(episodeId: episodeId) else { return }
+        try? data.write(to: cacheFileURL(episodeId: episodeId), options: .atomic)
+    }
+
+    func clearAudioCache() {
+        let items = (try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil)) ?? []
+        for item in items { try? FileManager.default.removeItem(at: item) }
+    }
+
+    func cachedAudioByteSize() -> Int64 {
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        return items.reduce(0) { sum, url in
+            sum + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
     }
 
     /// Local copy of an attachment, if it has been downloaded.
@@ -129,6 +169,8 @@ extension DownloadManager: URLSessionDownloadDelegate {
             try? FileManager.default.removeItem(at: dest)
             do {
                 try FileManager.default.moveItem(at: location, to: dest)
+                // An explicit download supersedes any streamed-cache copy.
+                try? FileManager.default.removeItem(at: cacheFileURL(episodeId: record.id))
                 if !records.contains(where: { $0.id == record.id }) {
                     records.append(record)
                 }

@@ -8,6 +8,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showClearConfirm = false
+    @State private var showClearCacheConfirm = false
+    @State private var cacheBytes: Int64 = 0
 
     var body: some View {
         NavigationStack {
@@ -42,6 +44,18 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("串流時自動快取", isOn: $settings.cacheStreamedAudio)
+                    Button("清除快取音檔", role: .destructive) {
+                        showClearCacheConfirm = true
+                    }
+                    .disabled(cacheBytes == 0)
+                } header: {
+                    Text("串流快取")
+                } footer: {
+                    Text("開啟後，串流完整播放過的音檔會自動保存，下次播放免再下載（不會顯示在「下載」分頁）。\(cacheSizeText)")
+                }
+
+                Section {
                     Button("清除所有 AI 內容", role: .destructive) {
                         showClearConfirm = true
                     }
@@ -49,6 +63,7 @@ struct SettingsView: View {
                     Text("刪除已儲存的逐字稿與 AI 講義。")
                 }
             }
+            .onAppear { cacheBytes = DownloadManager.shared.cachedAudioByteSize() }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -61,6 +76,20 @@ struct SettingsView: View {
                 Button("清除", role: .destructive) { ai.clearAll() }
                 Button("取消", role: .cancel) {}
             }
+            .confirmationDialog("確定要清除快取音檔嗎？", isPresented: $showClearCacheConfirm,
+                                titleVisibility: .visible) {
+                Button("清除", role: .destructive) {
+                    DownloadManager.shared.clearAudioCache()
+                    cacheBytes = 0
+                }
+                Button("取消", role: .cancel) {}
+            }
         }
+    }
+
+    private var cacheSizeText: String {
+        guard cacheBytes > 0 else { return "" }
+        let size = ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
+        return "目前已快取 \(size)。"
     }
 }

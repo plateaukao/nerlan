@@ -14,6 +14,7 @@ final class SettingsStore: ObservableObject {
     private static let keychainAccount = "openai-api-key"
     private static let chatModelKey = "openaiChatModel"
     private static let transcriptionModelKey = "openaiTranscriptionModel"
+    private static let cacheStreamedAudioKey = "cacheStreamedAudio"
 
     @Published var apiKey: String {
         didSet { Keychain.set(apiKey, account: Self.keychainAccount) }
@@ -27,6 +28,13 @@ final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(transcriptionModel, forKey: Self.transcriptionModelKey) }
     }
 
+    /// When on, an episode streamed to completion is saved for offline replay
+    /// (see `CachingPlayerItem`). Off by default so it never silently uses data
+    /// or storage the user didn't ask for.
+    @Published var cacheStreamedAudio: Bool {
+        didSet { UserDefaults.standard.set(cacheStreamedAudio, forKey: Self.cacheStreamedAudioKey) }
+    }
+
     /// Drives the visibility of the AI action icons.
     var hasAPIKey: Bool {
         !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -38,5 +46,6 @@ final class SettingsStore: ObservableObject {
         chatModel = UserDefaults.standard.string(forKey: Self.chatModelKey) ?? Self.defaultChatModel
         transcriptionModel = UserDefaults.standard.string(forKey: Self.transcriptionModelKey)
             ?? Self.defaultTranscriptionModel
+        cacheStreamedAudio = UserDefaults.standard.bool(forKey: Self.cacheStreamedAudioKey)
     }
 }
