@@ -1,0 +1,42 @@
+import Combine
+import Foundation
+
+/// User-configurable OpenAI credentials and model choices. The API key is kept
+/// in the Keychain (via `Keychain`); model names are plain UserDefaults values.
+/// Injected as an `environmentObject` like the other app-state singletons.
+@MainActor
+final class SettingsStore: ObservableObject {
+    static let shared = SettingsStore()
+
+    static let defaultChatModel = "gpt-4o"
+    static let defaultTranscriptionModel = "whisper-1"
+
+    private static let keychainAccount = "openai-api-key"
+    private static let chatModelKey = "openaiChatModel"
+    private static let transcriptionModelKey = "openaiTranscriptionModel"
+
+    @Published var apiKey: String {
+        didSet { Keychain.set(apiKey, account: Self.keychainAccount) }
+    }
+
+    @Published var chatModel: String {
+        didSet { UserDefaults.standard.set(chatModel, forKey: Self.chatModelKey) }
+    }
+
+    @Published var transcriptionModel: String {
+        didSet { UserDefaults.standard.set(transcriptionModel, forKey: Self.transcriptionModelKey) }
+    }
+
+    /// Drives the visibility of the AI action icons.
+    var hasAPIKey: Bool {
+        !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private init() {
+        // Property observers don't fire during init, so these loads don't write back.
+        apiKey = Keychain.get(Self.keychainAccount) ?? ""
+        chatModel = UserDefaults.standard.string(forKey: Self.chatModelKey) ?? Self.defaultChatModel
+        transcriptionModel = UserDefaults.standard.string(forKey: Self.transcriptionModelKey)
+            ?? Self.defaultTranscriptionModel
+    }
+}

@@ -8,6 +8,7 @@ struct ProgramListView: View {
     @State private var selectedLanguage: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showSettings = false
 
     private var languages: [String] {
         groups.map(\.language)
@@ -30,6 +31,14 @@ struct ProgramListView: View {
             .navigationTitle("語言學習")
             .task { if groups.isEmpty { await reload() } }
             .refreshable { await reload() }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gear")
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) { SettingsView() }
         }
     }
 

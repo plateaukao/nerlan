@@ -5,6 +5,7 @@ struct PlayerView: View {
     @EnvironmentObject var player: PlayerManager
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var favorites: FavoritesStore
+    @EnvironmentObject var settings: SettingsStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var isScrubbing = false
@@ -145,6 +146,15 @@ struct PlayerView: View {
                     }
                 }
                 .font(.subheadline)
+            }
+
+            // AI tools (transcript / handout) — only once an API key is set.
+            if let record = player.current, settings.hasAPIKey {
+                HStack(spacing: 44) {
+                    AIActionButton(kind: .transcript, record: record)
+                    AIActionButton(kind: .handout, record: record)
+                }
+                .foregroundStyle(.primary)
             }
 
             Spacer()

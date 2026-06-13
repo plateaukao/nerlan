@@ -67,6 +67,7 @@ struct RecordRow: View {
     let queue: [EpisodeRecord]
 
     @EnvironmentObject var player: PlayerManager
+    @EnvironmentObject var settings: SettingsStore
     @State private var showAttachment = false
 
     private var isCurrent: Bool { player.current?.id == record.id }
@@ -110,6 +111,11 @@ struct RecordRow: View {
                 .sheet(isPresented: $showAttachment) {
                     AttachmentView(title: record.title, attachments: record.pdfAttachments)
                 }
+            }
+
+            if settings.hasAPIKey {
+                AIActionButton(kind: .transcript, record: record, compact: true)
+                AIActionButton(kind: .handout, record: record, compact: true)
             }
         }
     }
