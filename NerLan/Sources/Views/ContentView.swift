@@ -6,14 +6,40 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26.1, *) {
-                modernTabs
+            if StudyPanel.usesSidePanel {
+                splitLayout
             } else {
-                legacyTabs
+                tabs
             }
         }
         .sheet(isPresented: $showPlayer) {
             PlayerView()
+        }
+    }
+
+    /// iPad: the browser on the left, the transcript / handout / 講義 panel on
+    /// the right. (iPhone stays portrait-locked → the plain tabs.)
+    ///
+    /// Uses `legacyTabs` (the explicit MiniPlayerBar overlay) rather than the
+    /// iOS 26 `tabViewBottomAccessory`: the system accessory re-lays-out on every
+    /// 0.5s playback tick inside this narrowed column, which makes its cover
+    /// thumbnail flicker. The plain overlay bar is stable.
+    private var splitLayout: some View {
+        HStack(spacing: 0) {
+            legacyTabs
+                .frame(width: 390)
+            Divider()
+            StudyDetailView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var tabs: some View {
+        if #available(iOS 26.1, *) {
+            modernTabs
+        } else {
+            legacyTabs
         }
     }
 

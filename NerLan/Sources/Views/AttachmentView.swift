@@ -7,8 +7,10 @@ import SwiftUI
 struct AttachmentView: View {
     let title: String
     let attachments: [Attachment]
+    /// Called by the close button. On iPhone it dismisses the sheet; in the iPad
+    /// panel it clears the panel.
+    var onClose: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var selected: Attachment?
 
     private var current: Attachment? { selected ?? attachments.first }
@@ -27,7 +29,7 @@ struct AttachmentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("關閉") { dismiss() }
+                    Button("關閉") { onClose() }
                 }
                 // Let the user switch between handouts when an episode has several.
                 if attachments.count > 1, let current {

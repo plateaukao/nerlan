@@ -12,6 +12,8 @@ struct AIActionButton: View {
     var compact: Bool = false
 
     @EnvironmentObject var ai: AIContentStore
+    @EnvironmentObject var study: StudyPanel
+    @Environment(\.dismiss) private var dismiss
     @State private var pendingOpen = false
     @State private var showSheet = false
     @State private var showError = false
@@ -30,7 +32,7 @@ struct AIActionButton: View {
             if running { return }
             if let failure { errorText = failure; showError = true; return }
             if ready {
-                showSheet = true
+                open()
             } else {
                 pendingOpen = true
                 start()
@@ -51,7 +53,7 @@ struct AIActionButton: View {
             }
         }
         .onChange(of: ready) { _, isReady in
-            if isReady, pendingOpen { pendingOpen = false; showSheet = true }
+            if isReady, pendingOpen { pendingOpen = false; open() }
         }
         .onChange(of: failure) { _, message in
             if let message, pendingOpen { pendingOpen = false; errorText = message; showError = true }
@@ -99,9 +101,22 @@ struct AIActionButton: View {
     private var sheet: some View {
         switch kind {
         case .transcript:
-            TranscriptView(title: record.title, text: ai.transcriptText(record.id) ?? "")
+            TranscriptView(title: record.title, text: ai.transcriptText(record.id) ?? "",
+                           onClose: { showSheet = false })
         case .handout:
-            HandoutView(title: record.title, html: ai.handoutHTML(record.id) ?? "")
+            HandoutView(title: record.title, html: ai.handoutHTML(record.id) ?? "",
+                        onClose: { showSheet = false })
+        }
+    }
+
+    /// On iPad (regular width) show the content in the right-hand panel and close
+    /// the player sheet if that's where this button lives; on iPhone use a sheet.
+    private func open() {
+        if StudyPanel.usesSidePanel {
+            study.item = kind == .transcript ? .transcript(record) : .handout(record)
+            dismiss()
+        } else {
+            showSheet = true
         }
     }
 

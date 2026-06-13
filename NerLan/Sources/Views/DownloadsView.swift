@@ -68,6 +68,7 @@ struct RecordRow: View {
 
     @EnvironmentObject var player: PlayerManager
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var study: StudyPanel
     @State private var showAttachment = false
 
     private var isCurrent: Bool { player.current?.id == record.id }
@@ -103,13 +104,18 @@ struct RecordRow: View {
 
             if !record.pdfAttachments.isEmpty {
                 Button {
-                    showAttachment = true
+                    if StudyPanel.usesSidePanel {
+                        study.item = .attachment(record)
+                    } else {
+                        showAttachment = true
+                    }
                 } label: {
                     Image(systemName: "info.circle")
                 }
                 .buttonStyle(.borderless)
                 .sheet(isPresented: $showAttachment) {
-                    AttachmentView(title: record.title, attachments: record.pdfAttachments)
+                    AttachmentView(title: record.title, attachments: record.pdfAttachments,
+                                   onClose: { showAttachment = false })
                 }
             }
 

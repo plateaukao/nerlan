@@ -6,8 +6,9 @@ import WebKit
 struct HandoutView: View {
     let title: String
     let html: String
-
-    @Environment(\.dismiss) private var dismiss
+    /// Called by the close button. On iPhone it dismisses the sheet; in the iPad
+    /// panel it clears the panel.
+    var onClose: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -17,7 +18,7 @@ struct HandoutView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("關閉") { dismiss() }
+                        Button("關閉") { onClose() }
                     }
                 }
         }

@@ -10,6 +10,7 @@ struct NerLanApp: App {
                 .environmentObject(FavoritesStore.shared)
                 .environmentObject(SettingsStore.shared)
                 .environmentObject(AIContentStore.shared)
+                .environmentObject(StudyPanel.shared)
         }
     }
 }

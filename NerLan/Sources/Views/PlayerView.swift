@@ -6,6 +6,7 @@ struct PlayerView: View {
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var favorites: FavoritesStore
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var study: StudyPanel
     @Environment(\.dismiss) private var dismiss
 
     @State private var isScrubbing = false
@@ -125,7 +126,12 @@ struct PlayerView: View {
 
                     if !record.pdfAttachments.isEmpty {
                         Button {
-                            showAttachment = true
+                            if StudyPanel.usesSidePanel {
+                                study.item = .attachment(record)
+                                dismiss()
+                            } else {
+                                showAttachment = true
+                            }
                         } label: {
                             Label("講義", systemImage: "info.circle")
                         }
@@ -162,7 +168,8 @@ struct PlayerView: View {
         .presentationDetents([.large])
         .sheet(isPresented: $showAttachment) {
             if let record = player.current {
-                AttachmentView(title: record.title, attachments: record.pdfAttachments)
+                AttachmentView(title: record.title, attachments: record.pdfAttachments,
+                               onClose: { showAttachment = false })
             }
         }
     }

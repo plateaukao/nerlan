@@ -13,8 +13,9 @@ import UIKit
 struct TranscriptView: View {
     let title: String
     let text: String
-
-    @Environment(\.dismiss) private var dismiss
+    /// Called by the close button. On iPhone it dismisses the sheet; in the iPad
+    /// panel it clears the panel.
+    var onClose: () -> Void
 
     private var sentences: [String] {
         text.components(separatedBy: .newlines)
@@ -65,7 +66,7 @@ struct TranscriptView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("關閉") { dismiss() }
+                    Button("關閉") { onClose() }
                 }
             }
         }
