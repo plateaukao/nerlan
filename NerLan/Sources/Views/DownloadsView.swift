@@ -1,24 +1,46 @@
 import SwiftUI
 
+/// How the Downloads / AI lists group their records.
+enum RecordGrouping: String, CaseIterable, Identifiable {
+    case program = "節目"
+    case language = "語言"
+    var id: String { rawValue }
+    func key(for record: EpisodeRecord) -> String {
+        self == .program ? record.programName : record.language
+    }
+}
+
+/// Segmented program/language switcher placed at the top of the content (not in
+/// the nav bar, where it crowds the tab/nav chrome in the narrow iPad column).
+struct GroupingPicker: View {
+    @Binding var selection: RecordGrouping
+    var body: some View {
+        Picker("分組", selection: $selection) {
+            ForEach(RecordGrouping.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+}
+
+/// Groups records by the chosen key, "其他" for blanks, episodes oldest-first.
+func groupRecords(_ records: [EpisodeRecord], by grouping: RecordGrouping)
+    -> [(key: String, records: [EpisodeRecord])] {
+    Dictionary(grouping: records) { grouping.key(for: $0) }
+        .map { (key: $0.key.isEmpty ? "其他" : $0.key,
+                records: $0.value.sorted { ($0.playDate ?? "") < ($1.playDate ?? "") }) }
+        .sorted { $0.key < $1.key }
+}
+
 /// Offline episodes, groupable by program or by language.
 struct DownloadsView: View {
-    enum Grouping: String, CaseIterable, Identifiable {
-        case program = "節目"
-        case language = "語言"
-        var id: String { rawValue }
-    }
-
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var player: PlayerManager
-    @State private var grouping: Grouping = .program
+    @State private var grouping: RecordGrouping = .program
 
     private var grouped: [(key: String, records: [EpisodeRecord])] {
-        let dict = Dictionary(grouping: downloads.records) {
-            grouping == .program ? $0.programName : $0.language
-        }
-        return dict
-            .map { (key: $0.key.isEmpty ? "其他" : $0.key, records: $0.value.sorted { ($0.playDate ?? "") < ($1.playDate ?? "") }) }
-            .sorted { $0.key < $1.key }
+        groupRecords(downloads.records, by: grouping)
     }
 
     var body: some View {
@@ -29,15 +51,18 @@ struct DownloadsView: View {
                                            systemImage: "arrow.down.circle",
                                            description: Text("在節目頁面點選下載按鈕，即可離線收聽。"))
                 } else {
-                    List {
-                        ForEach(grouped, id: \.key) { group in
-                            Section(group.key) {
-                                ForEach(group.records) { record in
-                                    RecordRow(record: record, queue: group.records)
-                                }
-                                .onDelete { offsets in
-                                    for i in offsets {
-                                        downloads.delete(episodeId: group.records[i].id)
+                    VStack(spacing: 0) {
+                        GroupingPicker(selection: $grouping)
+                        List {
+                            ForEach(grouped, id: \.key) { group in
+                                Section(group.key) {
+                                    ForEach(group.records) { record in
+                                        RecordRow(record: record, queue: group.records)
+                                    }
+                                    .onDelete { offsets in
+                                        for i in offsets {
+                                            downloads.delete(episodeId: group.records[i].id)
+                                        }
                                     }
                                 }
                             }
@@ -46,17 +71,6 @@ struct DownloadsView: View {
                 }
             }
             .navigationTitle("下載")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Picker("分組", selection: $grouping) {
-                        ForEach(Grouping.allCases) { g in
-                            Text(g.rawValue).tag(g)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 140)
-                }
-            }
         }
     }
 }
@@ -65,10 +79,15 @@ struct DownloadsView: View {
 struct RecordRow: View {
     let record: EpisodeRecord
     let queue: [EpisodeRecord]
+    /// In the AI tab: show transcript/handout buttons only for content that
+    /// already exists (regardless of whether an API key is set), so the user can
+    /// open it without seeing idle "generate" buttons.
+    var aiReadyOnly: Bool = false
 
     @EnvironmentObject var player: PlayerManager
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var study: StudyPanel
+    @EnvironmentObject var ai: AIContentStore
     @State private var showAttachment = false
 
     private var isCurrent: Bool { player.current?.id == record.id }
@@ -119,7 +138,14 @@ struct RecordRow: View {
                 }
             }
 
-            if settings.hasAPIKey {
+            if aiReadyOnly {
+                if ai.hasTranscript(record.id) {
+                    AIActionButton(kind: .transcript, record: record, compact: true)
+                }
+                if ai.hasHandout(record.id) {
+                    AIActionButton(kind: .handout, record: record, compact: true)
+                }
+            } else if settings.hasAPIKey {
                 AIActionButton(kind: .transcript, record: record, compact: true)
                 AIActionButton(kind: .handout, record: record, compact: true)
             }

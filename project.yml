@@ -20,6 +20,9 @@ targets:
           - CloudDocuments
         com.apple.developer.ubiquity-container-identifiers:
           - iCloud.com.danielkao.NerLan
+        # Key-value store for syncing favorites and the AI tab's per-episode
+        # metadata (small mutable records, one key each).
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
     info:
       path: NerLan/Resources/Info.plist
       properties:

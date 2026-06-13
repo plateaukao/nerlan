@@ -23,10 +23,16 @@ final class AIContentStore: ObservableObject {
     private let transcriptsDir: URL
     private let handoutsDir: URL
     private let indexURL: URL
-    /// episode id -> readable name ("<program> - <title>"), used to give the
-    /// iCloud copies human-friendly folder names even for content generated
-    /// while sync was off (the in-memory `EpisodeRecord` is gone by then).
-    private var displayNames: [String: String] = [:]
+    /// episode id -> the episode's record, for every episode that has a
+    /// transcript or handout. Powers the AI tab, supplies readable iCloud folder
+    /// names (even for content generated while sync was off, when the in-memory
+    /// record is gone), and is mirrored to iCloud KVS so the AI tab restores on
+    /// other devices / after reinstall.
+    @Published private(set) var records: [String: EpisodeRecord] = [:]
+
+    private static let kvsPrefix = "ai-rec-"
+    /// Whether to write records through to / adopt them from iCloud KVS.
+    private var syncingRecords = false
 
     private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -48,6 +54,11 @@ final class AIContentStore: ObservableObject {
         if SettingsStore.shared.syncToICloud { enableICloudSync() }
     }
 
+    /// Records of episodes that have a transcript or handout — the AI tab's list.
+    var aiRecords: [EpisodeRecord] {
+        records.values.filter { hasTranscript($0.id) || hasHandout($0.id) }
+    }
+
     /// Whether the user has opted into mirroring AI content to iCloud.
     private var syncOn: Bool { SettingsStore.shared.syncToICloud }
 
@@ -58,8 +69,8 @@ final class AIContentStore: ObservableObject {
     // MARK: - iCloud sync
 
     /// Start watching for incoming files and push everything we already have up
-    /// (with readable names). Called at launch when enabled and when the user
-    /// flips the toggle on.
+    /// (with readable names), and bring the record index into KVS sync. Called at
+    /// launch when enabled and when the user flips the toggle on.
     func enableICloudSync() {
         ICloudSync.shared.start()
         for kind in [Kind.transcript, .handout] {
@@ -67,44 +78,84 @@ final class AIContentStore: ObservableObject {
             let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for file in files where file.pathExtension == cloudKind(kind).localExt {
                 let id = file.deletingPathExtension().lastPathComponent
-                ICloudSync.shared.mirrorUp(cloudKind(kind), id: id, displayName: displayNames[id])
+                ICloudSync.shared.mirrorUp(cloudKind(kind), id: id, displayName: records[id].map(Self.displayName))
             }
         }
+        enableRecordSync()
     }
 
     func disableICloudSync() {
         ICloudSync.shared.stop()
+        syncingRecords = false
+        CloudKVStore.shared.unobserve(self)
     }
 
-    // MARK: - Readable-name index
+    // MARK: - Record index (powers the AI tab + readable iCloud names)
 
     private func loadIndex() {
         if let data = try? Data(contentsOf: indexURL),
-           let map = try? JSONDecoder().decode([String: String].self, from: data) {
-            displayNames = map
+           let map = try? JSONDecoder().decode([String: EpisodeRecord].self, from: data) {
+            records = map
         }
     }
 
     private func persistIndex() {
-        try? JSONEncoder().encode(displayNames).write(to: indexURL)
+        try? JSONEncoder().encode(records).write(to: indexURL)
     }
 
-    private func noteDisplayName(_ record: EpisodeRecord) {
-        let name = Self.displayName(record)
-        guard displayNames[record.id] != name else { return }
-        displayNames[record.id] = name
+    /// Record that an episode now has AI content; persist and (if syncing) push up.
+    private func noteRecord(_ record: EpisodeRecord) {
+        records[record.id] = record
         persistIndex()
+        if syncingRecords, let data = try? JSONEncoder().encode(record) {
+            CloudKVStore.shared.set(data, forKey: Self.kvsPrefix + record.id)
+        }
     }
 
-    /// Name content generated before the index existed, using whatever episode
-    /// records downloads/favorites still hold.
+    /// Build records for content generated before the index stored them, using
+    /// whatever episode records downloads/favorites still hold.
     private func backfillIndex() {
-        var known: [String: String] = [:]
-        for r in DownloadManager.shared.records { known[r.id] = Self.displayName(r) }
-        for r in FavoritesStore.shared.favorites { known[r.id] = Self.displayName(r) }
+        var known: [String: EpisodeRecord] = [:]
+        for r in DownloadManager.shared.records { known[r.id] = r }
+        for r in FavoritesStore.shared.favorites { known[r.id] = r }
         var changed = false
-        for id in storedContentIds() where displayNames[id] == nil {
-            if let name = known[id] { displayNames[id] = name; changed = true }
+        for id in storedContentIds() where records[id] == nil {
+            if let record = known[id] { records[id] = record; changed = true }
+        }
+        if changed { persistIndex() }
+    }
+
+    // MARK: - Record KVS sync
+
+    private func enableRecordSync() {
+        guard !syncingRecords else { return }
+        syncingRecords = true
+        CloudKVStore.shared.observe(self, selector: #selector(recordsChangedInKVS))
+        // Push any local records KVS is missing, then adopt anything new from KVS.
+        for (id, record) in records where CloudKVStore.shared.data(forKey: Self.kvsPrefix + id) == nil {
+            if let data = try? JSONEncoder().encode(record) {
+                CloudKVStore.shared.set(data, forKey: Self.kvsPrefix + id)
+            }
+        }
+        adoptRecordsFromKVS()
+        CloudKVStore.shared.synchronize()
+    }
+
+    @objc private func recordsChangedInKVS() {
+        Task { @MainActor in self.adoptRecordsFromKVS() }
+    }
+
+    /// Additively adopt records from KVS (the AI tab itself is gated on the
+    /// content files actually being present, so extra records are harmless and we
+    /// never drop a record that has local files).
+    private func adoptRecordsFromKVS() {
+        var changed = false
+        for entry in CloudKVStore.shared.entries(prefix: Self.kvsPrefix) {
+            if let record = try? JSONDecoder().decode(EpisodeRecord.self, from: entry.data),
+               records[record.id] == nil {
+                records[record.id] = record
+                changed = true
+            }
         }
         if changed { persistIndex() }
     }
@@ -155,12 +206,14 @@ final class AIContentStore: ObservableObject {
     }
 
     func clearAll() {
+        let ids = Array(records.keys)
         for dir in [transcriptsDir, handoutsDir] {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for item in items { try? FileManager.default.removeItem(at: item) }
         }
         if syncOn { ICloudSync.shared.removeAllUp() }
-        displayNames.removeAll()
+        if syncingRecords { for id in ids { CloudKVStore.shared.remove(Self.kvsPrefix + id) } }
+        records.removeAll()
         persistIndex()
         jobs.removeAll()
     }
@@ -173,6 +226,12 @@ final class AIContentStore: ObservableObject {
         try? FileManager.default.removeItem(at: url)
         if syncOn { ICloudSync.shared.removeUp(cloudKind(kind), id: id) }
         jobs.removeValue(forKey: key(kind, id))
+        // If nothing is left for this episode, drop its record (and its KVS copy).
+        if !hasTranscript(id) && !hasHandout(id) {
+            records.removeValue(forKey: id)
+            persistIndex()
+            if syncingRecords { CloudKVStore.shared.remove(Self.kvsPrefix + id) }
+        }
     }
 
     /// Delete the saved content and immediately re-run it with current settings.
@@ -221,7 +280,7 @@ final class AIContentStore: ObservableObject {
                 raw, model: settings.chatModel, apiKey: settings.apiKey)) ?? raw
 
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
-            noteDisplayName(record)
+            noteRecord(record)
             if syncOn { ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)   // publishes → hasTranscript-driven UI refreshes
             return text
@@ -248,7 +307,7 @@ final class AIContentStore: ObservableObject {
                 model: settings.chatModel, apiKey: settings.apiKey)
             let html = Self.wrapHTML(fragment, title: record.title)
             try html.data(using: .utf8)?.write(to: handoutURL(record.id))
-            noteDisplayName(record)
+            noteRecord(record)
             if syncOn { ICloudSync.shared.mirrorUp(.handout, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)
         } catch {

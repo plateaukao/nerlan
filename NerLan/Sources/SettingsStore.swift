@@ -22,6 +22,12 @@ final class SettingsStore: ObservableObject {
     private static let cacheStreamedAudioKey = "cacheStreamedAudio"
     private static let syncToICloudKey = "syncAIContentToICloud"
 
+    /// Nonisolated read of the persisted toggle, for stores that aren't on the
+    /// main actor (e.g. `FavoritesStore`) and need it during their own init.
+    nonisolated static var syncToICloudEnabled: Bool {
+        UserDefaults.standard.bool(forKey: syncToICloudKey)
+    }
+
     @Published var apiKey: String {
         didSet { Keychain.set(apiKey, account: Self.keychainAccount) }
     }
@@ -49,8 +55,13 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(syncToICloud, forKey: Self.syncToICloudKey)
             // AIContentStore owns the readable names, so it drives enable (which
             // both starts the watcher and uploads existing content) / disable.
-            if syncToICloud { AIContentStore.shared.enableICloudSync() }
-            else { AIContentStore.shared.disableICloudSync() }
+            if syncToICloud {
+                AIContentStore.shared.enableICloudSync()
+                FavoritesStore.shared.enableSync()
+            } else {
+                AIContentStore.shared.disableICloudSync()
+                FavoritesStore.shared.disableSync()
+            }
         }
     }
 

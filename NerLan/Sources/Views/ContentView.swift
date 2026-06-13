@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var player: PlayerManager
+    @EnvironmentObject var ai: AIContentStore
+    @EnvironmentObject var study: StudyPanel
     @State private var showPlayer = false
 
     var body: some View {
@@ -32,6 +34,24 @@ struct ContentView: View {
             StudyDetailView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        // When a new episode starts, default the panel to its study content,
+        // preferring a PDF handout, then the AI handout, then the transcript.
+        .onChange(of: player.current) { _, record in
+            showDefaultStudy(for: record)
+        }
+    }
+
+    private func showDefaultStudy(for record: EpisodeRecord?) {
+        guard let record else { study.item = nil; return }
+        if !record.pdfAttachments.isEmpty {
+            study.item = .attachment(record)
+        } else if ai.hasHandout(record.id) {
+            study.item = .handout(record)
+        } else if ai.hasTranscript(record.id) {
+            study.item = .transcript(record)
+        } else {
+            study.item = nil
+        }
     }
 
     @ViewBuilder
@@ -54,6 +74,7 @@ struct ContentView: View {
             Tab("節目", systemImage: "radio") { ProgramListView() }
             Tab("收藏", systemImage: "heart") { FavoritesView() }
             Tab("下載", systemImage: "arrow.down.circle") { DownloadsView() }
+            Tab("AI", systemImage: "wand.and.stars") { AITabView() }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory(isEnabled: player.current != nil) {
@@ -69,6 +90,8 @@ struct ContentView: View {
                 .tabItem { Label("收藏", systemImage: "heart") }
             DownloadsView()
                 .tabItem { Label("下載", systemImage: "arrow.down.circle") }
+            AITabView()
+                .tabItem { Label("AI", systemImage: "wand.and.stars") }
         }
         // Float the mini player above the tab bar with an overlay:
         // safeAreaInset over a List doesn't receive touches reliably.
