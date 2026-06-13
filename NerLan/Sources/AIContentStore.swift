@@ -80,11 +80,19 @@ final class AIContentStore: ObservableObject {
                 throw OpenAIService.APIError.server("找不到音訊檔")
             }
             jobs[k] = .running("轉錄中…")
-            let prepared = await SpeechAudioExporter.export(source)
-            let raw = try await OpenAIService.transcribe(
-                fileURL: prepared, model: settings.transcriptionModel, apiKey: settings.apiKey,
-                prompt: OpenAIService.transcriptionPrompt(for: record.language))
-            cleanupTemp(prepared, original: source)
+            // Long episodes are split into chunks (the gpt-4o-transcribe models
+            // cap input at 1400 s); transcribe each and join.
+            let chunks = await SpeechAudioExporter.exportChunks(source)
+            defer { cleanupChunks(chunks, original: source) }
+            let prompt = OpenAIService.transcriptionPrompt(for: record.language)
+            var parts: [String] = []
+            for (i, chunk) in chunks.enumerated() {
+                if chunks.count > 1 { jobs[k] = .running("轉錄中…（\(i + 1)/\(chunks.count)）") }
+                parts.append(try await OpenAIService.transcribe(
+                    fileURL: chunk, model: settings.transcriptionModel, apiKey: settings.apiKey,
+                    prompt: prompt))
+            }
+            let raw = parts.joined(separator: "\n")
 
             // Re-segment into one sentence per line with the chat model. If that
             // step fails, keep the raw transcript so the paid transcription isn't lost.
@@ -140,12 +148,12 @@ final class AIContentStore: ObservableObject {
         return dest
     }
 
-    /// Remove the transcoded temp file and any audio we downloaded to temp,
+    /// Remove the transcoded chunk temp files and any audio we downloaded to temp,
     /// leaving the persistent offline download (if that's what we used) intact.
-    private func cleanupTemp(_ prepared: URL, original: URL) {
+    private func cleanupChunks(_ chunks: [URL], original: URL) {
         let tmp = FileManager.default.temporaryDirectory.path
-        if prepared != original, prepared.path.hasPrefix(tmp) {
-            try? FileManager.default.removeItem(at: prepared)
+        for chunk in chunks where chunk != original && chunk.path.hasPrefix(tmp) {
+            try? FileManager.default.removeItem(at: chunk)
         }
         if original.path.hasPrefix(tmp) {
             try? FileManager.default.removeItem(at: original)

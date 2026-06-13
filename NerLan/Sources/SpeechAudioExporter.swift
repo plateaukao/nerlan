@@ -5,21 +5,54 @@ import AVFoundation
 /// bitrate stays well under that even for long episodes, and mono 16 kHz is the
 /// format speech recognition expects. Falls back to the source file on failure.
 enum SpeechAudioExporter {
-    /// Returns a temp .m4a URL (caller deletes it) or the original URL if
+    /// Max audio duration per transcription request. The gpt-4o-transcribe models
+    /// reject audio longer than 1400 s; we split below that with margin. whisper-1
+    /// has no duration cap, but chunking it as well keeps one code path and is
+    /// harmless (the per-chunk transcripts are concatenated).
+    static let maxChunkSeconds: Double = 1200
+
+    /// Transcode the audio and split it into chunks each no longer than
+    /// `maxChunkSeconds`, returned in order (caller deletes the temp files). A
+    /// short episode yields a single chunk. Falls back to `[sourceURL]` if
     /// transcoding isn't possible.
-    static func export(_ sourceURL: URL) async -> URL {
-        (try? await transcode(sourceURL)) ?? sourceURL
+    static func exportChunks(_ sourceURL: URL) async -> [URL] {
+        (try? await transcodeChunks(sourceURL)) ?? [sourceURL]
     }
 
     private enum Failure: Error { case noAudioTrack, cannotRead, cannotWrite }
 
-    private static func transcode(_ sourceURL: URL) async throws -> URL {
+    private static func transcodeChunks(_ sourceURL: URL) async throws -> [URL] {
+        let asset = AVURLAsset(url: sourceURL)
+        guard try await asset.loadTracks(withMediaType: .audio).first != nil else {
+            throw Failure.noAudioTrack
+        }
+        let duration = try await asset.load(.duration).seconds
+        guard duration.isFinite, duration > 0 else { throw Failure.cannotRead }
+
+        if duration <= maxChunkSeconds {
+            return [try await transcode(sourceURL, timeRange: nil)]
+        }
+        let chunkCount = Int((duration / maxChunkSeconds).rounded(.up))
+        var urls: [URL] = []
+        for i in 0..<chunkCount {
+            let start = Double(i) * maxChunkSeconds
+            let length = min(maxChunkSeconds, duration - start)
+            let range = CMTimeRange(
+                start: CMTime(seconds: start, preferredTimescale: 600),
+                duration: CMTime(seconds: length, preferredTimescale: 600))
+            urls.append(try await transcode(sourceURL, timeRange: range))
+        }
+        return urls
+    }
+
+    private static func transcode(_ sourceURL: URL, timeRange: CMTimeRange?) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             throw Failure.noAudioTrack
         }
 
         let reader = try AVAssetReader(asset: asset)
+        if let timeRange { reader.timeRange = timeRange }
         let readerOutput = AVAssetReaderTrackOutput(
             track: track,
             outputSettings: [
@@ -51,7 +84,10 @@ enum SpeechAudioExporter {
 
         guard reader.startReading() else { throw reader.error ?? Failure.cannotRead }
         guard writer.startWriting() else { throw writer.error ?? Failure.cannotWrite }
-        writer.startSession(atSourceTime: .zero)
+        // Trimmed reads yield buffers timestamped at the chunk's source time, so
+        // start the session there (we only ever append in-range samples, so the
+        // chunk file holds just that segment — no leading silence).
+        writer.startSession(atSourceTime: timeRange?.start ?? .zero)
 
         let queue = DispatchQueue(label: "com.danielkao.nerlan.speechexport")
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
