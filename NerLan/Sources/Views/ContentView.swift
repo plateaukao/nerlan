@@ -5,6 +5,37 @@ struct ContentView: View {
     @State private var showPlayer = false
 
     var body: some View {
+        Group {
+            if #available(iOS 26.1, *) {
+                modernTabs
+            } else {
+                legacyTabs
+            }
+        }
+        .sheet(isPresented: $showPlayer) {
+            PlayerView()
+        }
+    }
+
+    /// iOS 26.1+: native Liquid Glass mini player capsule (Apple Music style).
+    /// The system floats it above the tab bar, and tabBarMinimizeBehavior
+    /// collapses the tab bar on scroll with the accessory sliding inline.
+    /// isEnabled (26.1+) hides the capsule when nothing is playing — a
+    /// conditional inside the content closure would leave an empty capsule.
+    @available(iOS 26.1, *)
+    private var modernTabs: some View {
+        TabView {
+            Tab("節目", systemImage: "radio") { ProgramListView() }
+            Tab("收藏", systemImage: "heart") { FavoritesView() }
+            Tab("下載", systemImage: "arrow.down.circle") { DownloadsView() }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewBottomAccessory(isEnabled: player.current != nil) {
+            MiniPlayerAccessory { showPlayer = true }
+        }
+    }
+
+    private var legacyTabs: some View {
         TabView {
             ProgramListView()
                 .tabItem { Label("節目", systemImage: "radio") }
@@ -18,16 +49,65 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             if player.current != nil {
                 MiniPlayerBar { showPlayer = true }
-                    .padding(.bottom, 49) // standard tab bar height
+                    .padding(.bottom, 49 + 8) // standard tab bar height + gap
             }
-        }
-        .sheet(isPresented: $showPlayer) {
-            PlayerView()
         }
     }
 }
 
-/// Compact now-playing bar shown above the tab bar.
+/// Content of the iOS 26 tab view bottom accessory. The system provides the
+/// glass capsule background; when the tab bar collapses on scroll the
+/// placement turns .inline and we drop the next button like Apple Music.
+@available(iOS 26.0, *)
+struct MiniPlayerAccessory: View {
+    @EnvironmentObject var player: PlayerManager
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    let onTap: () -> Void
+
+    private var isInline: Bool { placement == .inline }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onTap) {
+                HStack(spacing: 10) {
+                    CoverImage(urlString: player.current?.coverURL, size: isInline ? 30 : 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(player.current?.title ?? "")
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        if !isInline {
+                            Text(player.current?.programName ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button { player.togglePlayPause() } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.borderless)
+            if !isInline {
+                Button { player.next() } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.title3)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!player.hasNext)
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+}
+
+/// Compact now-playing bar floated above the tab bar (pre-iOS 26 fallback).
 struct MiniPlayerBar: View {
     @EnvironmentObject var player: PlayerManager
     let onTap: () -> Void
@@ -67,7 +147,9 @@ struct MiniPlayerBar: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+        .padding(.horizontal, 12)
     }
 }
 
