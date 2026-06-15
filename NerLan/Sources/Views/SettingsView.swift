@@ -69,6 +69,19 @@ struct SettingsView: View {
                 } footer: {
                     Text("刪除已儲存的逐字稿與 AI 講義。")
                 }
+
+                Section("統計") {
+                    NavigationLink {
+                        UsageStatsView()
+                    } label: {
+                        Label("使用統計", systemImage: "chart.bar.xaxis")
+                    }
+                    NavigationLink {
+                        DataStatsView()
+                    } label: {
+                        Label("資料統計", systemImage: "internaldrive")
+                    }
+                }
             }
             .onAppear { cacheBytes = DownloadManager.shared.cachedAudioByteSize() }
             .navigationTitle("設定")

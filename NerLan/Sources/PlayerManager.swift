@@ -46,6 +46,10 @@ final class PlayerManager: ObservableObject {
     private let player = AVPlayer()
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    /// Wall-clock timestamp of the last playback tick, used to accumulate real
+    /// time spent listening (independent of playback rate). Nil while paused/idle;
+    /// gaps larger than a few seconds (pause, seek, backgrounding) are discarded.
+    private var lastTick: Date?
     /// The caching item currently streaming (when cache-on-stream is enabled),
     /// plus the episode it belongs to, so its completed buffer is saved under the
     /// right id. Only one is ever live — the previous one is stopped on each load.
@@ -65,6 +69,7 @@ final class PlayerManager: ObservableObject {
                 if let d = self.player.currentItem?.duration.seconds, d.isFinite {
                     self.duration = d
                 }
+                self.accumulateListening()
                 self.updateNowPlayingElapsed()
             }
         }
@@ -85,11 +90,27 @@ final class PlayerManager: ObservableObject {
         load(record)
     }
 
+    /// Credit real time spent in the playing state to the listening stats. Called
+    /// on each periodic tick; gaps from pause/seek/backgrounding (delta ≥ 5s) are
+    /// dropped rather than counted as listening.
+    private func accumulateListening() {
+        guard isPlaying else { lastTick = nil; return }
+        let now = Date()
+        if let last = lastTick {
+            let delta = now.timeIntervalSince(last)
+            if delta > 0, delta < 5 {
+                ListeningStatsStore.shared.addListening(seconds: delta, program: current)
+            }
+        }
+        lastTick = now
+    }
+
     private func load(_ record: EpisodeRecord) {
         // Discard any still-streaming caching item from the previous episode.
         cachingItem?.stopDownloading()
         cachingItem = nil
         cachingEpisodeId = nil
+        lastTick = nil   // don't count the gap across an episode change
 
         // Prefer an offline copy — an explicit download first, then a streamed
         // cache copy — and only then stream from the network.
@@ -129,11 +150,18 @@ final class PlayerManager: ObservableObject {
     func togglePlayPause() {
         if isPlaying { player.pause() } else { player.play() }
         isPlaying.toggle()
+        if isPlaying {
+            lastTick = Date()
+        } else {
+            lastTick = nil
+            ListeningStatsStore.shared.flush()
+        }
         updateNowPlayingElapsed()
     }
 
     /// Auto-advance when an episode finishes; honors the repeat mode.
     private func playbackDidFinish() {
+        ListeningStatsStore.shared.noteCompleted(current)
         if repeatMode == .one {
             seek(to: 0)
             player.play()

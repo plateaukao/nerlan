@@ -188,6 +188,14 @@ final class AIContentStore: ObservableObject {
     func hasTranscript(_ id: String) -> Bool { FileManager.default.fileExists(atPath: transcriptURL(id).path) }
     func hasHandout(_ id: String) -> Bool { FileManager.default.fileExists(atPath: handoutURL(id).path) }
 
+    /// Counts of saved content, for the 資料統計 screen.
+    var transcriptCount: Int { fileCount(transcriptsDir) }
+    var handoutCount: Int { fileCount(handoutsDir) }
+
+    private func fileCount(_ dir: URL) -> Int {
+        (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.count ?? 0
+    }
+
     func transcriptText(_ id: String) -> String? { try? String(contentsOf: transcriptURL(id), encoding: .utf8) }
     func handoutHTML(_ id: String) -> String? { try? String(contentsOf: handoutURL(id), encoding: .utf8) }
 

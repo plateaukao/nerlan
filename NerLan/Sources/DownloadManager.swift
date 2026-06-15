@@ -100,12 +100,30 @@ final class DownloadManager: NSObject, ObservableObject {
         for item in items { try? FileManager.default.removeItem(at: item) }
     }
 
-    func cachedAudioByteSize() -> Int64 {
+    func cachedAudioByteSize() -> Int64 { Self.directoryByteSize(cacheDir) }
+
+    // MARK: - Inventory (for the 資料統計 screen)
+
+    /// Number of explicitly downloaded episodes.
+    var downloadedEpisodeCount: Int { records.count }
+
+    func downloadedAudioByteSize() -> Int64 { Self.directoryByteSize(audioDir) }
+
+    func attachmentCount() -> Int { Self.fileCount(attachmentsDir) }
+
+    /// Number of episodes captured by the streamed-audio cache.
+    func cachedEpisodeCount() -> Int { Self.fileCount(cacheDir) }
+
+    private static func directoryByteSize(_ dir: URL) -> Int64 {
         let items = (try? FileManager.default.contentsOfDirectory(
-            at: cacheDir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
         return items.reduce(0) { sum, url in
             sum + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
+    }
+
+    private static func fileCount(_ dir: URL) -> Int {
+        (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.count ?? 0
     }
 
     /// Local copy of an attachment, if it has been downloaded.
