@@ -3,6 +3,17 @@ import Combine
 import MediaPlayer
 import UIKit
 
+/// High-frequency playback position, split out of `PlayerManager`. The 0.5s
+/// time-observer ticks update this object, so they invalidate only views that
+/// observe the clock (the full-player scrubber) — not every list row, mini
+/// player, or `ContentView` that observes `PlayerManager` for `current` /
+/// `isPlaying`, which is what made the lists scroll-lag during playback.
+@MainActor
+final class PlaybackClock: ObservableObject {
+    @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
+}
+
 /// App-wide audio player. Holds the current queue (an episode list from one
 /// program view, favorites, or downloads) and drives AVPlayer + lock-screen controls.
 @MainActor
@@ -12,8 +23,10 @@ final class PlayerManager: ObservableObject {
     @Published private(set) var current: EpisodeRecord?
     @Published private(set) var queue: [EpisodeRecord] = []
     @Published private(set) var isPlaying = false
-    @Published var currentTime: Double = 0
-    @Published private(set) var duration: Double = 0
+
+    /// Playback position. Kept on a separate observable so frequent time updates
+    /// don't re-render the lists/mini player. See `PlaybackClock`.
+    let clock = PlaybackClock()
 
     static let availableRates: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
@@ -65,9 +78,9 @@ final class PlayerManager: ObservableObject {
         ) { [weak self] time in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.currentTime = time.seconds
+                self.clock.currentTime = time.seconds
                 if let d = self.player.currentItem?.duration.seconds, d.isFinite {
-                    self.duration = d
+                    self.clock.duration = d
                 }
                 self.accumulateListening()
                 self.updateNowPlayingElapsed()
@@ -132,8 +145,8 @@ final class PlayerManager: ObservableObject {
             return
         }
         current = record
-        duration = 0
-        currentTime = 0
+        clock.duration = 0
+        clock.currentTime = 0
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
@@ -189,12 +202,12 @@ final class PlayerManager: ObservableObject {
 
     func seek(to seconds: Double) {
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
-        currentTime = seconds
+        clock.currentTime = seconds
         updateNowPlayingElapsed()
     }
 
     func skip(_ delta: Double) {
-        seek(to: max(0, min(currentTime + delta, duration > 0 ? duration : .greatestFiniteMagnitude)))
+        seek(to: max(0, min(clock.currentTime + delta, clock.duration > 0 ? clock.duration : .greatestFiniteMagnitude)))
     }
 
     // MARK: - Lock screen / control center
@@ -227,8 +240,8 @@ final class PlayerManager: ObservableObject {
             MPMediaItemPropertyArtist: current.programName,
             MPMediaItemPropertyAlbumTitle: current.language,
         ]
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = clock.currentTime
+        if clock.duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = clock.duration }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
 
         if let coverString = current.coverURL, let url = URL(string: coverString) {
@@ -243,8 +256,8 @@ final class PlayerManager: ObservableObject {
 
     private func updateNowPlayingElapsed() {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = clock.currentTime
+        if clock.duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = clock.duration }
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }

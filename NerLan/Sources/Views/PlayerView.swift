@@ -9,6 +9,10 @@ struct PlayerView: View {
     @EnvironmentObject var study: StudyPanel
     @Environment(\.dismiss) private var dismiss
 
+    /// The scrubber needs the high-frequency playback position; observe the clock
+    /// directly so only this sheet re-renders on each tick.
+    @ObservedObject private var clock = PlayerManager.shared.clock
+
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
     @State private var showAttachment = false
@@ -42,22 +46,22 @@ struct PlayerView: View {
             VStack(spacing: 4) {
                 Slider(
                     value: Binding(
-                        get: { isScrubbing ? scrubTime : player.currentTime },
+                        get: { isScrubbing ? scrubTime : clock.currentTime },
                         set: { scrubTime = $0 }
                     ),
-                    in: 0...max(player.duration, 1)
+                    in: 0...max(clock.duration, 1)
                 ) { editing in
                     if editing {
-                        scrubTime = player.currentTime
+                        scrubTime = clock.currentTime
                     } else {
                         player.seek(to: scrubTime)
                     }
                     isScrubbing = editing
                 }
                 HStack {
-                    Text(timeString(isScrubbing ? scrubTime : player.currentTime))
+                    Text(timeString(isScrubbing ? scrubTime : clock.currentTime))
                     Spacer()
-                    Text(timeString(player.duration))
+                    Text(timeString(clock.duration))
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
