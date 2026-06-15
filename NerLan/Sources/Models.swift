@@ -95,7 +95,7 @@ struct LanguageGroup: Identifiable {
 
 // MARK: - Episodes
 
-struct Episode: Decodable, Identifiable, Hashable {
+struct Episode: Codable, Identifiable, Hashable {
     let episodeId: String
     let title: String?
     let duration: Int?

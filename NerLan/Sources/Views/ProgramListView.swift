@@ -29,7 +29,7 @@ struct ProgramListView: View {
                 }
             }
             .navigationTitle("語言學習")
-            .task { if groups.isEmpty { await reload() } }
+            .task { await loadInitial() }
             .refreshable { await reload() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -91,24 +91,41 @@ struct ProgramListView: View {
         .buttonStyle(.plain)
     }
 
+    /// On first appearance, render the cached catalog if we have one (no network);
+    /// only fetch when there's nothing cached. Pull-to-refresh uses `reload()`.
+    private func loadInitial() async {
+        guard groups.isEmpty else { return }
+        if let cached = CatalogCache.loadPrograms(), !cached.isEmpty {
+            groups = group(cached)
+            return
+        }
+        await reload()
+    }
+
     private func reload() async {
         isLoading = true
         errorMessage = nil
         do {
             let programs = try await ChannelPlusAPI.programs()
-            var order: [String] = []
-            var byLanguage: [String: [Program]] = [:]
-            for program in programs {
-                let lang = program.language
-                if byLanguage[lang] == nil { order.append(lang) }
-                byLanguage[lang, default: []].append(program)
-            }
-            groups = order.map { LanguageGroup(language: $0, programs: byLanguage[$0]!) }
+            groups = group(programs)
+            CatalogCache.savePrograms(programs)
         } catch {
-            groups = []
-            errorMessage = error.localizedDescription
+            // Keep any cached catalog already on screen; only surface the error
+            // when we have nothing to show.
+            if groups.isEmpty { errorMessage = error.localizedDescription }
         }
         isLoading = false
+    }
+
+    private func group(_ programs: [Program]) -> [LanguageGroup] {
+        var order: [String] = []
+        var byLanguage: [String: [Program]] = [:]
+        for program in programs {
+            let lang = program.language
+            if byLanguage[lang] == nil { order.append(lang) }
+            byLanguage[lang, default: []].append(program)
+        }
+        return order.map { LanguageGroup(language: $0, programs: byLanguage[$0]!) }
     }
 }
 

@@ -51,6 +51,7 @@ struct ProgramDetailView: View {
             }
         }
         .listStyle(.plain)
+        .refreshable { await refresh() }
         .navigationTitle(program.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -63,7 +64,7 @@ struct ProgramDetailView: View {
                 }
             }
         }
-        .task { if episodes.isEmpty { await loadMore() } }
+        .task { await loadInitial() }
     }
 
     private var header: some View {
@@ -105,6 +106,21 @@ struct ProgramDetailView: View {
         .padding(.vertical, 4)
     }
 
+    /// On first appearance, restore the cached episode pages if we have them (no
+    /// network); otherwise fetch the first page. Infinite scroll then resumes from
+    /// the cached cursor, so previously-seen pages are never re-fetched.
+    private func loadInitial() async {
+        guard episodes.isEmpty else { return }
+        if let cached = CatalogCache.loadEpisodes(programId: program.programId), !cached.episodes.isEmpty {
+            episodes = cached.episodes
+            page = cached.page
+            totalPages = cached.totalPages
+            totalCount = cached.totalCount
+            return
+        }
+        await loadMore()
+    }
+
     private func loadMore() async {
         guard !isLoading, page < totalPages || page == 0 else { return }
         isLoading = true
@@ -116,10 +132,36 @@ struct ProgramDetailView: View {
             page = next
             totalPages = result.totalPages
             totalCount = result.totalCount
+            saveCache()
         } catch {
-            // keep what we have; pull-to-refresh isn't offered here, retry happens on next scroll
+            // keep what we have; retry happens on next scroll (or pull-to-refresh)
         }
         isLoading = false
+    }
+
+    /// Pull-to-refresh: re-fetch the program from the first page, replacing the
+    /// cache. Episodes are ascending (oldest first), so a higher `totalCount`
+    /// surfaces newly-added episodes as the user scrolls back down.
+    private func refresh() async {
+        guard !isLoading else { return }
+        isLoading = true
+        do {
+            let result = try await ChannelPlusAPI.episodes(programId: program.programId, page: 1)
+            episodes = result.episodes
+            page = 1
+            totalPages = result.totalPages
+            totalCount = result.totalCount
+            saveCache()
+        } catch {
+            // keep what we have on a failed refresh
+        }
+        isLoading = false
+    }
+
+    private func saveCache() {
+        CatalogCache.saveEpisodes(
+            .init(episodes: episodes, page: page, totalPages: totalPages, totalCount: totalCount),
+            programId: program.programId)
     }
 
     private func record(for episode: Episode) -> EpisodeRecord {
@@ -199,8 +241,8 @@ struct EpisodeRow: View {
         if downloads.isDownloaded(episodeId: episode.id) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-        } else if let p = downloads.progress[episode.id] {
-            ProgressView(value: p)
+        } else if downloads.isDownloading(episodeId: episode.id) {
+            ProgressView()
                 .progressViewStyle(.circular)
         } else {
             Button {

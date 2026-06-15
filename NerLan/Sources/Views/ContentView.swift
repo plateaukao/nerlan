@@ -202,15 +202,27 @@ struct MiniPlayerBar: View {
     }
 }
 
-/// Async cover image with a music-note placeholder.
+/// Cover image with a music-note placeholder, backed by `CoverImageCache` so a
+/// fetched cover persists on disk and is never re-downloaded across launches.
 struct CoverImage: View {
     let urlString: String?
     var size: CGFloat
 
+    @State private var image: UIImage?
+
+    init(urlString: String?, size: CGFloat) {
+        self.urlString = urlString
+        self.size = size
+        // Instant first paint when the cover is already in memory (no async hop).
+        if let url = urlString.flatMap(URL.init(string:)) {
+            _image = State(initialValue: CoverImageCache.shared.memoryCached(url))
+        }
+    }
+
     var body: some View {
-        AsyncImage(url: urlString.flatMap(URL.init(string:))) { phase in
-            if let image = phase.image {
-                image.resizable().scaledToFill()
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
             } else {
                 ZStack {
                     Color(.systemGray5)
@@ -221,5 +233,11 @@ struct CoverImage: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size / 8))
+        .task(id: urlString) {
+            guard let url = urlString.flatMap(URL.init(string:)) else { return }
+            if let loaded = await CoverImageCache.shared.image(for: url), !Task.isCancelled {
+                image = loaded
+            }
+        }
     }
 }

@@ -39,6 +39,11 @@ enum ChannelPlusAPI {
         let url = URL(string: "\(base.absoluteString)/\(pathAndQuery)")!
         var req = URLRequest(url: url)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        // The app keeps its own on-disk catalog (`CatalogCache`) and only calls the
+        // API on a cache miss or an explicit pull-to-refresh, so these requests must
+        // always go to the network. Bypass `URLCache` so a refresh can never return
+        // a stale JSON body.
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, _) = try await URLSession.shared.data(for: req)
         return try JSONDecoder().decode(APIResponse<T>.self, from: data)
     }
