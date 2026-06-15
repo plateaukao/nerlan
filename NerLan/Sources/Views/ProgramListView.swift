@@ -23,20 +23,29 @@ struct ProgramListView: View {
         NavigationStack {
             Group {
                 if let errorMessage {
-                    ContentUnavailableView("載入失敗", systemImage: "wifi.exclamationmark", description: Text(errorMessage))
+                    VStack(spacing: 0) {
+                        TopTitle(text: "語言學習")
+                        ContentUnavailableView("載入失敗", systemImage: "wifi.exclamationmark", description: Text(errorMessage))
+                            .frame(maxHeight: .infinity)
+                    }
                 } else {
                     list
                 }
             }
-            .navigationTitle("語言學習")
+            .toolbar(.hidden, for: .navigationBar)
             .task { await loadInitial() }
             .refreshable { await reload() }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
-                        Image(systemName: "gear")
-                    }
+            // The nav bar is hidden so the title can live in the scroll content;
+            // float the settings gear in the top-trailing safe area instead.
+            .overlay(alignment: .topTrailing) {
+                Button { showSettings = true } label: {
+                    Image(systemName: "gear")
+                        .font(.title3)
+                        .padding(10)
+                        .contentShape(Rectangle())
                 }
+                .padding(.trailing, 6)
+                .padding(.top, 6)
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
         }
@@ -44,6 +53,7 @@ struct ProgramListView: View {
 
     private var list: some View {
         List {
+            ScrollAwayTitle(text: "語言學習")
             Section {
                 FlowLayout(spacing: 8) {
                     languageChip(nil, label: "全部")
@@ -67,6 +77,9 @@ struct ProgramListView: View {
             }
         }
         .listStyle(.insetGrouped)
+        // Remove the grouped list's default top inset so the title sits right
+        // under the status bar instead of floating below it.
+        .contentMargins(.top, 0, for: .scrollContent)
         .navigationDestination(for: Program.self) { program in
             ProgramDetailView(program: program)
         }

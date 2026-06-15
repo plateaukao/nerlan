@@ -10,17 +10,48 @@ enum RecordGrouping: String, CaseIterable, Identifiable {
     }
 }
 
-/// Segmented program/language switcher placed at the top of the content (not in
-/// the nav bar, where it crowds the tab/nav chrome in the narrow iPad column).
-struct GroupingPicker: View {
+/// Compact program/language switch shown in the top-trailing corner, aligned
+/// with the page title — replaces a full-width segmented picker so it doesn't
+/// eat a whole row. One Liquid Glass capsule split into two equal halves, with
+/// an accent indicator that slides to the selected half.
+struct GroupingToggle: View {
     @Binding var selection: RecordGrouping
+    @Namespace private var ns
+
     var body: some View {
-        Picker("分組", selection: $selection) {
-            ForEach(RecordGrouping.allCases) { Text($0.rawValue).tag($0) }
+        HStack(spacing: 0) {
+            ForEach(RecordGrouping.allCases) { group in
+                let isSelected = selection == group
+                ZStack {
+                    if isSelected {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .padding(3)
+                            .matchedGeometryEffect(id: "indicator", in: ns)
+                    }
+                    Text(group.rawValue)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.snappy) { selection = group } }
+            }
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .frame(width: 140, height: 34)
+        .modifier(CapsuleGlass())
+    }
+}
+
+/// A Liquid Glass capsule background on iOS 26, falling back to a material on
+/// older systems.
+private struct CapsuleGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: .capsule)
+        } else {
+            content.background(.thinMaterial, in: Capsule())
+        }
     }
 }
 
@@ -47,30 +78,42 @@ struct DownloadsView: View {
         NavigationStack {
             Group {
                 if downloads.records.isEmpty {
-                    ContentUnavailableView("沒有下載的單集",
-                                           systemImage: "arrow.down.circle",
-                                           description: Text("在節目頁面點選下載按鈕，即可離線收聽。"))
-                } else {
                     VStack(spacing: 0) {
-                        GroupingPicker(selection: $grouping)
-                        List {
-                            ForEach(grouped, id: \.key) { group in
-                                Section(group.key) {
-                                    ForEach(group.records) { record in
-                                        RecordRow(record: record, queue: group.records)
-                                    }
-                                    .onDelete { offsets in
-                                        for i in offsets {
-                                            downloads.delete(episodeId: group.records[i].id)
-                                        }
+                        TopTitle(text: "下載")
+                        ContentUnavailableView("沒有下載的單集",
+                                               systemImage: "arrow.down.circle",
+                                               description: Text("在節目頁面點選下載按鈕，即可離線收聽。"))
+                            .frame(maxHeight: .infinity)
+                    }
+                } else {
+                    List {
+                        ScrollAwayTitle(text: "下載")
+                        ForEach(grouped, id: \.key) { group in
+                            Section(group.key) {
+                                ForEach(group.records) { record in
+                                    RecordRow(record: record, queue: group.records)
+                                }
+                                .onDelete { offsets in
+                                    for i in offsets {
+                                        downloads.delete(episodeId: group.records[i].id)
                                     }
                                 }
                             }
                         }
                     }
+                    .contentMargins(.top, 0, for: .scrollContent)
                 }
             }
-            .navigationTitle("下載")
+            .toolbar(.hidden, for: .navigationBar)
+            // Pin the grouping switch in the top-trailing corner, aligned with
+            // the title — only when there's something to group.
+            .overlay(alignment: .topTrailing) {
+                if !downloads.records.isEmpty {
+                    GroupingToggle(selection: $grouping)
+                        .padding(.trailing, 12)
+                        .padding(.top, 8)
+                }
+            }
         }
     }
 }

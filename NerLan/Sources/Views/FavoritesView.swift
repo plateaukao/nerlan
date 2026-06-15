@@ -15,11 +15,16 @@ struct FavoritesView: View {
         NavigationStack {
             Group {
                 if favorites.favorites.isEmpty && favorites.programs.isEmpty {
-                    ContentUnavailableView("沒有收藏",
-                                           systemImage: "heart",
-                                           description: Text("點選節目或單集旁的愛心即可加入收藏。"))
+                    VStack(spacing: 0) {
+                        TopTitle(text: "收藏")
+                        ContentUnavailableView("沒有收藏",
+                                               systemImage: "heart",
+                                               description: Text("點選節目或單集旁的愛心即可加入收藏。"))
+                            .frame(maxHeight: .infinity)
+                    }
                 } else {
                     List {
+                        ScrollAwayTitle(text: "收藏")
                         if !favorites.programs.isEmpty {
                             Section("節目") {
                                 ForEach(favorites.programs) { program in
@@ -47,9 +52,10 @@ struct FavoritesView: View {
                             }
                         }
                     }
+                    .contentMargins(.top, 0, for: .scrollContent)
                 }
             }
-            .navigationTitle("收藏")
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Program.self) { program in
                 ProgramDetailView(program: program)
             }
