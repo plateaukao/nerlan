@@ -8,8 +8,11 @@ final class DownloadManager: NSObject, ObservableObject {
     static let shared = DownloadManager()
 
     @Published private(set) var records: [EpisodeRecord] = []
-    /// episodeId -> 0...1 while an episode's audio download is in flight
-    @Published private(set) var progress: [String: Double] = [:]
+    /// Episode ids whose audio download is in flight. Membership only — the UI
+    /// shows an indeterminate spinner, so there's no per-byte progress to publish
+    /// (republishing a fraction on every chunk pegged the main thread and got the
+    /// app killed for exceeding the background CPU limit).
+    @Published private(set) var downloading: Set<String> = []
 
     /// What a background download task is fetching: an episode's audio, or one
     /// of its attachments. Attachments piggyback on the audio download so they
@@ -64,7 +67,7 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     func isDownloading(episodeId: String) -> Bool {
-        progress[episodeId] != nil
+        downloading.contains(episodeId)
     }
 
     func localAssetURL(episodeId: String) -> URL? {
@@ -116,7 +119,7 @@ final class DownloadManager: NSObject, ObservableObject {
            let remote = record.audio.flatMap(URL.init(string:)) {
             let task = session.downloadTask(with: remote)
             tasks[task.taskIdentifier] = .audio(record)
-            progress[record.id] = 0
+            downloading.insert(record.id)
             task.resume()
         }
         downloadAttachments(for: record)
@@ -152,13 +155,8 @@ final class DownloadManager: NSObject, ObservableObject {
 }
 
 extension DownloadManager: URLSessionDownloadDelegate {
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
-                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
-                    totalBytesExpectedToWrite: Int64) {
-        guard case .audio(let record) = tasks[downloadTask.taskIdentifier],
-              totalBytesExpectedToWrite > 0 else { return }
-        progress[record.id] = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-    }
+    // No didWriteData: progress is membership-only (an indeterminate spinner), so
+    // there's deliberately nothing to publish per byte-chunk.
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {
@@ -188,7 +186,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let target = tasks.removeValue(forKey: task.taskIdentifier) else { return }
         if case .audio(let record) = target {
-            progress.removeValue(forKey: record.id)
+            downloading.remove(record.id)
         }
     }
 }

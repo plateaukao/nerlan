@@ -140,9 +140,8 @@ struct PlayerView: View {
                     if downloads.isDownloaded(episodeId: record.id) {
                         Label("已下載", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
-                    } else if let p = downloads.progress[record.id] {
-                        ProgressView(value: p)
-                            .frame(width: 80)
+                    } else if downloads.isDownloading(episodeId: record.id) {
+                        ProgressView()
                     } else {
                         Button {
                             downloads.download(record)
