@@ -54,8 +54,16 @@ final class DownloadManager: NSObject, ObservableObject {
         session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
     }
 
-    private func fileURL(episodeId: String) -> URL {
-        audioDir.appendingPathComponent("\(episodeId).mp3")
+    /// Audio file extensions an episode might be stored under: NER is always mp3,
+    /// podcasts can be m4a/aac/etc. Probed in order, so the mp3 common case hits
+    /// first and NER rows incur a single `fileExists` stat (no regression).
+    private static let audioExtensions = ["mp3", "m4a", "aac", "ogg", "opus", "wav", "mp4"]
+
+    /// Where an episode's audio is stored, using its declared extension. A
+    /// real-m4a file stored under a .mp3 name can fail to play, so podcasts keep
+    /// their true extension.
+    private func audioFileURL(for record: EpisodeRecord) -> URL {
+        audioDir.appendingPathComponent("\(record.id).\(record.audioFileExtension)")
     }
 
     private func attachmentFileURL(_ attachment: Attachment) -> URL {
@@ -70,29 +78,33 @@ final class DownloadManager: NSObject, ObservableObject {
         downloading.contains(episodeId)
     }
 
+    /// The downloaded audio file for an id, whatever extension it was saved with.
     func localAssetURL(episodeId: String) -> URL? {
-        let url = fileURL(episodeId: episodeId)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        Self.existingFile(in: audioDir, id: episodeId)
+    }
+
+    private static func existingFile(in dir: URL, id: String) -> URL? {
+        for ext in audioExtensions {
+            let url = dir.appendingPathComponent("\(id).\(ext)")
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return nil
     }
 
     // MARK: - Streamed-audio cache
 
-    private func cacheFileURL(episodeId: String) -> URL {
-        cacheDir.appendingPathComponent("\(episodeId).mp3")
-    }
-
     /// A copy captured while streaming, if one exists. Used by the player after an
     /// explicit download but before falling back to the network.
     func cachedAssetURL(episodeId: String) -> URL? {
-        let url = cacheFileURL(episodeId: episodeId)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        Self.existingFile(in: cacheDir, id: episodeId)
     }
 
-    /// Persist a fully-streamed episode. No-op if it's already an explicit
-    /// download (that copy takes precedence and shouldn't be duplicated).
-    func storeCachedAudio(_ data: Data, episodeId: String) {
+    /// Persist a fully-streamed episode under its real extension (so AAC plays
+    /// back correctly). No-op if it's already an explicit download (that copy
+    /// takes precedence and shouldn't be duplicated).
+    func storeCachedAudio(_ data: Data, episodeId: String, ext: String = "mp3") {
         guard !isDownloaded(episodeId: episodeId) else { return }
-        try? data.write(to: cacheFileURL(episodeId: episodeId), options: .atomic)
+        try? data.write(to: cacheDir.appendingPathComponent("\(episodeId).\(ext)"), options: .atomic)
     }
 
     func clearAudioCache() {
@@ -157,7 +169,9 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     func delete(episodeId: String) {
-        try? FileManager.default.removeItem(at: fileURL(episodeId: episodeId))
+        if let url = localAssetURL(episodeId: episodeId) {
+            try? FileManager.default.removeItem(at: url)
+        }
         if let record = records.first(where: { $0.id == episodeId }) {
             for attachment in record.attachments ?? [] {
                 try? FileManager.default.removeItem(at: attachmentFileURL(attachment))
@@ -181,12 +195,14 @@ extension DownloadManager: URLSessionDownloadDelegate {
         guard let target = tasks[downloadTask.taskIdentifier] else { return }
         switch target {
         case .audio(let record):
-            let dest = fileURL(episodeId: record.id)
+            let dest = audioFileURL(for: record)
             try? FileManager.default.removeItem(at: dest)
             do {
                 try FileManager.default.moveItem(at: location, to: dest)
                 // An explicit download supersedes any streamed-cache copy.
-                try? FileManager.default.removeItem(at: cacheFileURL(episodeId: record.id))
+                if let cached = cachedAssetURL(episodeId: record.id) {
+                    try? FileManager.default.removeItem(at: cached)
+                }
                 if !records.contains(where: { $0.id == record.id }) {
                     records.append(record)
                 }

@@ -4,11 +4,13 @@ import SwiftUI
 /// The full Channel+ catalog (~96 programs) loads in one request and is
 /// grouped by language client-side, so the chips filter instantly.
 struct ProgramListView: View {
+    @EnvironmentObject var podcasts: PodcastStore
     @State private var groups: [LanguageGroup] = []
     @State private var selectedLanguage: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSettings = false
+    @State private var showAddPodcast = false
 
     private var languages: [String] {
         groups.map(\.language)
@@ -36,18 +38,28 @@ struct ProgramListView: View {
             .task { await loadInitial() }
             .refreshable { await reload() }
             // The nav bar is hidden so the title can live in the scroll content;
-            // float the settings gear in the top-trailing safe area instead.
+            // float the add-podcast and settings buttons in the top-trailing
+            // safe area instead.
             .overlay(alignment: .topTrailing) {
-                Button { showSettings = true } label: {
-                    Image(systemName: "gear")
-                        .font(.title3)
-                        .padding(10)
-                        .contentShape(Rectangle())
+                HStack(spacing: 2) {
+                    Button { showAddPodcast = true } label: {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                            .padding(10)
+                            .contentShape(Rectangle())
+                    }
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gear")
+                            .font(.title3)
+                            .padding(10)
+                            .contentShape(Rectangle())
+                    }
                 }
                 .padding(.trailing, 6)
                 .padding(.top, 6)
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showAddPodcast) { AddPodcastView() }
         }
     }
 
@@ -66,6 +78,18 @@ struct ProgramListView: View {
                 .listRowSeparator(.hidden)
             }
 
+            // Subscribed podcasts pinned above the NER catalog, shown only in the
+            // unfiltered ("全部") view so a language filter stays clean.
+            if selectedLanguage == nil, !podcasts.feeds.isEmpty {
+                Section("我的 Podcast") {
+                    ForEach(podcasts.feeds) { feed in
+                        NavigationLink(value: feed) {
+                            PodcastRow(feed: feed)
+                        }
+                    }
+                }
+            }
+
             ForEach(visibleGroups) { group in
                 Section(group.language) {
                     ForEach(group.programs) { program in
@@ -82,6 +106,9 @@ struct ProgramListView: View {
         .contentMargins(.top, 0, for: .scrollContent)
         .navigationDestination(for: Program.self) { program in
             ProgramDetailView(program: program)
+        }
+        .navigationDestination(for: PodcastFeed.self) { feed in
+            PodcastDetailView(feed: feed)
         }
         .overlay {
             if isLoading && groups.isEmpty { ProgressView() }
@@ -217,6 +244,33 @@ struct ProgramRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Row for a subscribed podcast in the "我的 Podcast" section (mirrors ProgramRow).
+struct PodcastRow: View {
+    let feed: PodcastFeed
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CoverImage(urlString: feed.coverURL, size: 56)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(feed.title)
+                    .font(.body.weight(.medium))
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    if let author = feed.author, !author.isEmpty {
+                        Text(author)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Text("共 \(feed.episodes.count) 集")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }

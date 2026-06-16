@@ -144,16 +144,56 @@ struct Episode: Codable, Identifiable, Hashable {
 struct EpisodeRecord: Codable, Identifiable, Hashable {
     let id: String          // episode id
     let title: String
-    let playDate: String?   // raw API date string (sortable)
+    let playDate: String?   // ISO-8601 date string (sortable)
     let audio: String?      // remote audio URL
     let programId: String
     let programName: String
     let language: String
     let coverURL: String?
     let attachments: [Attachment]?   // optional: records saved before this field decode fine
+    // The following two are optional so records persisted before they existed
+    // (NER `favorites.json` / `downloads.json`) still decode without migration.
+    let durationSeconds: Int?        // episode length, when known
+    let audioExt: String?            // audio file extension ("mp3"/"m4a"); nil ⇒ "mp3"
 
     /// PDF attachments, the only kind we can render inline.
     var pdfAttachments: [Attachment] { (attachments ?? []).filter(\.isPDF) }
+
+    /// File extension to store the downloaded audio with (NER serves mp3).
+    var audioFileExtension: String { audioExt ?? "mp3" }
+
+    /// "H:MM:SS" for hour-plus episodes (common for podcasts), else "M:SS".
+    var durationText: String {
+        guard let durationSeconds, durationSeconds > 0 else { return "" }
+        let h = durationSeconds / 3600, m = (durationSeconds % 3600) / 60, s = durationSeconds % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s)
+                     : String(format: "%d:%02d", m, s)
+    }
+
+    /// "yyyy/MM/dd" from the ISO-8601 `playDate`, when parseable.
+    var releaseDateText: String {
+        guard let playDate, let d = EpisodeRecord.parseISODate(playDate) else { return "" }
+        return EpisodeRecord.displayFormatter.string(from: d)
+    }
+
+    /// Tolerant ISO-8601 parse: NER dates carry fractional seconds, normalized
+    /// podcast dates don't.
+    static func parseISODate(_ s: String) -> Date? {
+        if let d = isoFractional.date(from: s) { return d }
+        return isoPlain.date(from: s)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+    private static let displayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/MM/dd"
+        return f
+    }()
 
     init(episode: Episode, programId: String, programName: String,
          language: String, coverURL: String?) {
@@ -166,5 +206,25 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.language = language
         self.coverURL = coverURL
         self.attachments = episode.attachments
+        self.durationSeconds = episode.duration
+        self.audioExt = nil   // NER audio is mp3
+    }
+
+    /// Raw initializer for records built outside the NER API (e.g. podcast feeds).
+    init(id: String, title: String, playDate: String?, audio: String?,
+         programId: String, programName: String, language: String,
+         coverURL: String?, durationSeconds: Int? = nil, audioExt: String? = nil,
+         attachments: [Attachment]? = nil) {
+        self.id = id
+        self.title = title
+        self.playDate = playDate
+        self.audio = audio
+        self.programId = programId
+        self.programName = programName
+        self.language = language
+        self.coverURL = coverURL
+        self.durationSeconds = durationSeconds
+        self.audioExt = audioExt
+        self.attachments = attachments
     }
 }

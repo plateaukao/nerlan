@@ -68,6 +68,7 @@ final class PlayerManager: ObservableObject {
     /// right id. Only one is ever live — the previous one is stopped on each load.
     private var cachingItem: CachingPlayerItem?
     private var cachingEpisodeId: String?
+    private var cachingAudioExt: String?
 
     private init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
@@ -123,6 +124,7 @@ final class PlayerManager: ObservableObject {
         cachingItem?.stopDownloading()
         cachingItem = nil
         cachingEpisodeId = nil
+        cachingAudioExt = nil
         lastTick = nil   // don't count the gap across an episode change
 
         // Prefer an offline copy — an explicit download first, then a streamed
@@ -137,6 +139,7 @@ final class PlayerManager: ObservableObject {
                 caching.cacheDelegate = self
                 cachingItem = caching
                 cachingEpisodeId = record.id
+                cachingAudioExt = record.audioFileExtension
                 item = caching
             } else {
                 item = AVPlayerItem(asset: AVURLAsset(url: remote))
@@ -267,7 +270,7 @@ extension PlayerManager: CachingPlayerItemDelegate {
     nonisolated func cachingPlayerItem(_ item: CachingPlayerItem, didFinishDownloading data: Data) {
         Task { @MainActor [weak self] in
             guard let self, item === self.cachingItem, let id = self.cachingEpisodeId else { return }
-            DownloadManager.shared.storeCachedAudio(data, episodeId: id)
+            DownloadManager.shared.storeCachedAudio(data, episodeId: id, ext: self.cachingAudioExt ?? "mp3")
         }
     }
 }

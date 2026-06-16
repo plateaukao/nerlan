@@ -126,11 +126,23 @@ struct RecordRow: View {
     /// already exists (regardless of whether an API key is set), so the user can
     /// open it without seeing idle "generate" buttons.
     var aiReadyOnly: Bool = false
+    /// Podcast detail turns these on to get inline favorite + download buttons
+    /// (like the NER episode list). Off everywhere else, so the
+    /// Downloads/Favorites/AI rows are unchanged.
+    var showFavorite: Bool = false
+    var showDownload: Bool = false
+    /// Replaces the "program · language" subtitle (podcast rows show date · duration).
+    var subtitleOverride: String? = nil
+    /// The podcast episode list turns AI icons off, matching the NER episode list
+    /// (`EpisodeRow`) — AI is still reachable from the player and the AI tab.
+    var showAI: Bool = true
 
     @EnvironmentObject var player: PlayerManager
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var study: StudyPanel
     @EnvironmentObject var ai: AIContentStore
+    @EnvironmentObject var favorites: FavoritesStore
+    @EnvironmentObject var downloads: DownloadManager
     @State private var showAttachment = false
 
     private var isCurrent: Bool { player.current?.id == record.id }
@@ -151,7 +163,7 @@ struct RecordRow: View {
                             .font(.subheadline)
                             .foregroundStyle(isCurrent ? Color.accentColor : .primary)
                             .lineLimit(2)
-                        Text("\(record.programName) · \(record.language)")
+                        Text(subtitleOverride ?? "\(record.programName) · \(record.language)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -163,6 +175,18 @@ struct RecordRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            if showFavorite {
+                Button {
+                    favorites.toggle(record)
+                } label: {
+                    Image(systemName: favorites.isFavorite(episodeId: record.id) ? "heart.fill" : "heart")
+                        .foregroundStyle(.pink)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            if showDownload { downloadButton }
 
             if !record.pdfAttachments.isEmpty {
                 Button {
@@ -181,17 +205,39 @@ struct RecordRow: View {
                 }
             }
 
-            if aiReadyOnly {
-                if ai.hasTranscript(record.id) {
+            if showAI {
+                if aiReadyOnly {
+                    if ai.hasTranscript(record.id) {
+                        AIActionButton(kind: .transcript, record: record, compact: true)
+                    }
+                    if ai.hasHandout(record.id) {
+                        AIActionButton(kind: .handout, record: record, compact: true)
+                    }
+                } else if settings.hasAPIKey {
                     AIActionButton(kind: .transcript, record: record, compact: true)
-                }
-                if ai.hasHandout(record.id) {
                     AIActionButton(kind: .handout, record: record, compact: true)
                 }
-            } else if settings.hasAPIKey {
-                AIActionButton(kind: .transcript, record: record, compact: true)
-                AIActionButton(kind: .handout, record: record, compact: true)
             }
+        }
+    }
+
+    /// Mirrors `EpisodeRow`'s download affordance: checkmark when downloaded,
+    /// spinner while in flight, otherwise a download button.
+    @ViewBuilder
+    private var downloadButton: some View {
+        if downloads.isDownloaded(episodeId: record.id) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else if downloads.isDownloading(episodeId: record.id) {
+            ProgressView()
+                .progressViewStyle(.circular)
+        } else {
+            Button {
+                downloads.download(record)
+            } label: {
+                Image(systemName: "arrow.down.circle")
+            }
+            .buttonStyle(.borderless)
         }
     }
 }

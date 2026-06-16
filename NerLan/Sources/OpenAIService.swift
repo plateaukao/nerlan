@@ -112,23 +112,37 @@ enum OpenAIService {
 
     /// Produce an HTML study-handout *fragment* from a transcript via
     /// `POST /chat/completions`. The caller wraps it in a styled HTML document.
+    ///
+    /// `partTitle` is set when an episode is split into ~15-minute parts: the
+    /// fragment is prefixed with a "Part …" heading and its four section headings
+    /// drop to `h3` (nested under the part), so the document reads Part I →
+    /// 內容說明/文法重點/例句/單字, Part II → …. When nil (≤15 min) the four
+    /// sections are top-level `h2`.
     static func generateHandout(transcript: String, record: EpisodeRecord,
+                                partTitle: String? = nil,
                                 model: String, apiKey: String) async throws -> String {
         guard !apiKey.isEmpty else { throw APIError.missingKey }
 
+        let tag = partTitle == nil ? "h2" : "h3"
+        let partNote = partTitle == nil ? ""
+            : "你收到的是整集節目其中一段（約 15 分鐘）的逐字稿，請只根據這一段的內容製作講義。"
         let system = """
         你是一位專業的語言老師，正在為「\(record.language)」語言學習教材製作複習講義。\
-        你會收到一集廣播節目的逐字稿，請根據內容整理出一份適合學生複習的講義。\
+        \(partNote)\
+        你會收到一段廣播節目的逐字稿，請根據內容整理出一份適合學生複習的講義。\
         說明文字一律使用「台灣繁體中文（正體字）」，絕對不要使用簡體字；例句與單字中的外語請保留原貌（不要翻譯或改成中文字）。\
-        並使用 HTML 格式輸出，分成三個區塊：\
-        <h2>文法重點</h2>（列出本集出現的文法句型，附簡短解說）、\
-        <h2>例句</h2>（從內容中挑選實用例句，逐句附上中文翻譯）、\
-        <h2>單字</h2>（重要單字表，含發音或拼音與中文意思，建議用表格呈現）。\
-        只輸出 HTML 內容片段（可使用 h2、h3、p、ul、ol、li、table、tr、th、td、strong、em、ruby 等標籤），\
+        並使用 HTML 格式輸出，依序分成四個區塊：\
+        <\(tag)>內容說明</\(tag)>（用幾句話說明這段內容的主題與大意）、\
+        <\(tag)>文法重點</\(tag)>（列出出現的文法句型，附簡短解說）、\
+        <\(tag)>例句</\(tag)>（從內容中挑選實用例句，逐句附上中文翻譯）、\
+        <\(tag)>單字</\(tag)>（重要單字表，含發音或拼音與中文意思，建議用表格呈現）。\
+        只輸出 HTML 內容片段（可使用 h2、h3、h4、p、ul、ol、li、table、tr、th、td、strong、em、ruby 等標籤），\
         不要輸出 <html>、<head>、<body> 標籤，也不要使用 Markdown 或程式碼圍欄。
         """
         let user = "節目：\(record.programName)\n單集：\(record.title)\n\n逐字稿：\n\(transcript)"
-        return stripCodeFence(try await chat(system: system, user: user, model: model, apiKey: apiKey))
+        let fragment = stripCodeFence(try await chat(system: system, user: user, model: model, apiKey: apiKey))
+        guard let partTitle else { return fragment }
+        return "<h2>\(partTitle)</h2>\n\(fragment)"
     }
 
     // MARK: - Sentence segmentation

@@ -8,6 +8,7 @@ struct NerLanApp: App {
                 .environmentObject(PlayerManager.shared)
                 .environmentObject(DownloadManager.shared)
                 .environmentObject(FavoritesStore.shared)
+                .environmentObject(PodcastStore.shared)
                 .environmentObject(SettingsStore.shared)
                 .environmentObject(AIContentStore.shared)
                 .environmentObject(StudyPanel.shared)

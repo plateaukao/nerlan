@@ -298,6 +298,10 @@ final class AIContentStore: ObservableObject {
         }
     }
 
+    /// Each handout "Part" covers at most this many seconds of audio (~15 min),
+    /// so a long episode is split into digestible Part I/II/III sections.
+    private static let handoutPartSeconds = 900
+
     private func runHandout(_ record: EpisodeRecord) async {
         let k = key(.handout, record.id)
         let settings = SettingsStore.shared
@@ -309,11 +313,24 @@ final class AIContentStore: ObservableObject {
                 }
                 throw OpenAIService.APIError.server("逐字稿失敗")
             }
-            jobs[k] = .running("生成講義中…")
-            let fragment = try await OpenAIService.generateHandout(
-                transcript: transcript, record: record,
-                model: settings.chatModel, apiKey: settings.apiKey)
-            let html = Self.wrapHTML(fragment, title: record.title)
+
+            // Episodes longer than ~15 min are split into time-based parts, each
+            // its own Part I/II/III handout section; shorter ones stay a single
+            // handout.
+            let segments = Self.handoutSegments(transcript, durationSeconds: record.durationSeconds)
+            var fragments: [String] = []
+            for (i, segment) in segments.enumerated() {
+                jobs[k] = segments.count > 1
+                    ? .running("生成講義中…（\(i + 1)/\(segments.count)）")
+                    : .running("生成講義中…")
+                let partTitle = segments.count > 1
+                    ? Self.partTitle(index: i, total: segments.count, duration: record.durationSeconds)
+                    : nil
+                fragments.append(try await OpenAIService.generateHandout(
+                    transcript: segment, record: record, partTitle: partTitle,
+                    model: settings.chatModel, apiKey: settings.apiKey))
+            }
+            let html = Self.wrapHTML(fragments.joined(separator: "\n"), title: record.title)
             try html.data(using: .utf8)?.write(to: handoutURL(record.id))
             noteRecord(record)
             if syncOn { ICloudSync.shared.mirrorUp(.handout, id: record.id, displayName: Self.displayName(record)) }
@@ -321,6 +338,61 @@ final class AIContentStore: ObservableObject {
         } catch {
             jobs[k] = .failed(error.localizedDescription)
         }
+    }
+
+    /// Split the transcript into one segment per ~15-minute part. Returns a single
+    /// segment when the episode is ≤15 min (or its length is unknown and the
+    /// transcript is short). Segments are balanced by character count and broken
+    /// only at line (sentence) boundaries, since the transcript is one sentence
+    /// per line.
+    static func handoutSegments(_ transcript: String, durationSeconds: Int?) -> [String] {
+        let parts: Int
+        if let dur = durationSeconds, dur > 0 {
+            parts = max(1, Int((Double(dur) / Double(handoutPartSeconds)).rounded(.up)))
+        } else {
+            // Unknown duration: ~3500 chars ≈ 15 min of speech.
+            parts = max(1, Int((Double(transcript.count) / 3500.0).rounded(.up)))
+        }
+        guard parts > 1 else { return [transcript] }
+
+        let lines = transcript.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let target = max(1, transcript.count / parts)
+        var segments: [String] = []
+        var current: [String] = []
+        var currentChars = 0
+        for line in lines {
+            current.append(line)
+            currentChars += line.count + 1
+            if currentChars >= target, segments.count < parts - 1 {
+                segments.append(current.joined(separator: "\n"))
+                current = []
+                currentChars = 0
+            }
+        }
+        if !current.isEmpty { segments.append(current.joined(separator: "\n")) }
+        return segments
+    }
+
+    /// "Part I（00:00–15:00）" — Roman numeral plus the part's audio time range
+    /// (range omitted when the duration is unknown).
+    static func partTitle(index: Int, total: Int, duration: Int?) -> String {
+        let label = "Part \(romanNumeral(index + 1))"
+        guard let duration, duration > 0 else { return label }
+        let start = index * handoutPartSeconds
+        let end = (index == total - 1) ? duration : (index + 1) * handoutPartSeconds
+        return "\(label)（\(timeStamp(start))–\(timeStamp(end))）"
+    }
+
+    private static func timeStamp(_ seconds: Int) -> String {
+        let h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+
+    private static func romanNumeral(_ value: Int) -> String {
+        let table: [(Int, String)] = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+        var n = value, result = ""
+        for (v, r) in table { while n >= v { result += r; n -= v } }
+        return result
     }
 
     /// Local download if present, otherwise fetch the remote audio to a temp file.
