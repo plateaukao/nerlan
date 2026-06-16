@@ -86,6 +86,13 @@ struct ProgramListView: View {
                         NavigationLink(value: feed) {
                             PodcastRow(feed: feed)
                         }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                podcasts.unsubscribe(id: feed.id)
+                            } label: {
+                                Label("取消訂閱", systemImage: "minus.circle")
+                            }
+                        }
                     }
                 }
             }

@@ -35,22 +35,13 @@ struct PodcastDetailView: View {
         }
         .listStyle(.plain)
         .refreshable { try? await podcasts.refresh(feed.id) }
-        .navigationTitle(current.title)
+        // The header already shows the title next to the cover, so don't repeat it
+        // as the nav-bar title.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    if podcasts.isSubscribed(id: feed.id) {
-                        podcasts.unsubscribe(id: feed.id)
-                    } else {
-                        podcasts.subscribe(current)
-                    }
-                } label: {
-                    Image(systemName: podcasts.isSubscribed(id: feed.id) ? "heart.fill" : "heart")
-                        .foregroundStyle(.pink)
-                }
-            }
-        }
+        // No favorite/subscribe heart here: a podcast is added from the "+" and
+        // removed by swiping its row in the 我的 Podcast list. A heart would read as
+        // a Favorites-tab favorite, which podcast subscriptions are not.
     }
 
     private var header: some View {
@@ -60,6 +51,10 @@ struct PodcastDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(current.title)
                         .font(.headline)
+                        // Show the whole title (wrap to as many lines as needed)
+                        // instead of truncating it to one line in the list row.
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     if let author = current.author, !author.isEmpty {
                         Text(author)
                             .font(.caption)

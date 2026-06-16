@@ -52,7 +52,9 @@ struct ProgramDetailView: View {
         }
         .listStyle(.plain)
         .refreshable { await refresh() }
-        .navigationTitle(program.name)
+        // The header shows the program name next to the cover, so don't repeat it
+        // as the nav-bar title.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
