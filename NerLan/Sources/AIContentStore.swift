@@ -88,6 +88,12 @@ final class AIContentStore: ObservableObject {
                 ICloudSync.shared.mirrorUp(cloudKind(kind), id: id, displayName: records[id].map(Self.displayName))
             }
         }
+        // Cue sidecars sync as a third kind (no AIContentStore.Kind of their own).
+        let cueFiles = (try? FileManager.default.contentsOfDirectory(at: cuesDir, includingPropertiesForKeys: nil)) ?? []
+        for file in cueFiles where file.pathExtension == "json" {
+            let id = file.deletingPathExtension().lastPathComponent
+            ICloudSync.shared.mirrorUp(.cues, id: id, displayName: records[id].map(Self.displayName))
+        }
         enableRecordSync()
     }
 
@@ -248,7 +254,10 @@ final class AIContentStore: ObservableObject {
         objectWillChange.send()
         let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
         try? FileManager.default.removeItem(at: url)
-        if kind == .transcript { try? FileManager.default.removeItem(at: cuesURL(id)) }
+        if kind == .transcript {
+            try? FileManager.default.removeItem(at: cuesURL(id))
+            if syncOn { ICloudSync.shared.removeUp(.cues, id: id) }
+        }
         if syncOn { ICloudSync.shared.removeUp(cloudKind(kind), id: id) }
         jobs.removeValue(forKey: key(kind, id))
         // If nothing is left for this episode, drop its record (and its KVS copy).
@@ -342,7 +351,13 @@ final class AIContentStore: ObservableObject {
                 try? FileManager.default.removeItem(at: cuesURL(record.id))
             }
             noteRecord(record)
-            if syncOn { ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: Self.displayName(record)) }
+            if syncOn {
+                let name = Self.displayName(record)
+                ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: name)
+                // The cue sidecar rides up alongside its transcript so other devices
+                // get the highlighting too.
+                if !cues.isEmpty { ICloudSync.shared.mirrorUp(.cues, id: record.id, displayName: name) }
+            }
             jobs.removeValue(forKey: k)   // publishes → hasTranscript-driven UI refreshes
             return text
         } catch {

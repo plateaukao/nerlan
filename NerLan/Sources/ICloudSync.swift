@@ -5,14 +5,15 @@ import Foundation
 /// survive reinstalls and show up on the user's other devices. Audio is
 /// deliberately never synced (large, and re-downloadable for free from Channel+).
 ///
-/// Local `Documents/ai/{transcripts,handouts}/{id}.{ext}` stays the source of
-/// truth: `AIContentStore` reads/writes there synchronously and the app works
+/// Local `Documents/ai/{transcripts,handouts,cues}/{id}.{ext}` stays the source
+/// of truth: `AIContentStore` reads/writes there synchronously and the app works
 /// fully with iCloud off. The *cloud* copy is laid out for humans browsing the
 /// "NerLan" folder in Files — one readable folder per episode:
 ///
 ///     <programName> - <title> [<id>]/
 ///         transcript.txt
 ///         handout.html
+///         cues.json        (sentence timestamps; rides with the transcript)
 ///
 /// The `[<id>]` suffix is how the pull side maps a folder back to the local
 /// id-keyed file; the inner names are fixed ASCII so matching is immune to
@@ -22,11 +23,29 @@ import Foundation
 final class ICloudSync {
     static let shared = ICloudSync()
 
-    enum Kind {
-        case transcript, handout
-        var localSub: String { self == .transcript ? "transcripts" : "handouts" }
-        var localExt: String { self == .transcript ? "txt" : "html" }
-        var cloudFile: String { self == .transcript ? "transcript.txt" : "handout.html" }
+    enum Kind: CaseIterable {
+        case transcript, handout, cues
+        var localSub: String {
+            switch self {
+            case .transcript: return "transcripts"
+            case .handout: return "handouts"
+            case .cues: return "cues"
+            }
+        }
+        var localExt: String {
+            switch self {
+            case .transcript: return "txt"
+            case .handout: return "html"
+            case .cues: return "json"
+            }
+        }
+        var cloudFile: String {
+            switch self {
+            case .transcript: return "transcript.txt"
+            case .handout: return "handout.html"
+            case .cues: return "cues.json"
+            }
+        }
     }
 
     /// Fired on the main thread after files are pulled down, so stores can
@@ -193,9 +212,8 @@ final class ICloudSync {
         guard query == nil else { return }
         let q = NSMetadataQuery()
         q.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        q.predicate = NSPredicate(format: "%K == %@ OR %K == %@",
-                                  NSMetadataItemFSNameKey, Kind.transcript.cloudFile,
-                                  NSMetadataItemFSNameKey, Kind.handout.cloudFile)
+        q.predicate = NSPredicate(format: "%K IN %@",
+                                  NSMetadataItemFSNameKey, Kind.allCases.map(\.cloudFile))
         NotificationCenter.default.addObserver(self, selector: #selector(queryUpdated),
                                                name: .NSMetadataQueryDidFinishGathering, object: q)
         NotificationCenter.default.addObserver(self, selector: #selector(queryUpdated),
@@ -253,13 +271,8 @@ final class ICloudSync {
     /// Map ".../Documents/<folder>/transcript.txt" to its (kind, episode id).
     private func parseCloudURL(_ url: URL) -> (kind: Kind, id: String)? {
         let comps = url.pathComponents
-        guard let d = comps.firstIndex(of: "Documents"), comps.count == d + 3 else { return nil }
-        let kind: Kind
-        switch comps[d + 2] {
-        case Kind.transcript.cloudFile: kind = .transcript
-        case Kind.handout.cloudFile: kind = .handout
-        default: return nil
-        }
+        guard let d = comps.firstIndex(of: "Documents"), comps.count == d + 3,
+              let kind = Kind.allCases.first(where: { $0.cloudFile == comps[d + 2] }) else { return nil }
         return (kind, extractId(fromFolderName: comps[d + 1]))
     }
 }
