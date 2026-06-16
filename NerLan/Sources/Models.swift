@@ -61,6 +61,17 @@ struct LanguageTags: Codable, Hashable {
     let contentLevel: [Tag]?
 }
 
+/// One display sentence of a transcript plus the audio time (in seconds) at which
+/// it begins, derived from the ASR segment timestamps. Persisted as a sidecar
+/// (`Documents/ai/cues/{id}.json`) so the transcript screen can highlight the
+/// sentence currently being spoken. Transcripts produced before this existed —
+/// or with a model that returns no timestamps — simply have no cues and render
+/// without highlighting.
+struct TranscriptCue: Codable, Equatable {
+    let start: Double
+    let text: String
+}
+
 // MARK: - Programs
 
 struct Program: Codable, Identifiable, Hashable {
@@ -155,6 +166,11 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
     // (NER `favorites.json` / `downloads.json`) still decode without migration.
     let durationSeconds: Int?        // episode length, when known
     let audioExt: String?            // audio file extension ("mp3"/"m4a"); nil ⇒ "mp3"
+    // Language of the audio for monolingual sources (podcasts), so transcription
+    // can force it: an ISO-639-1 code ("ko"), or "" when monolingual but the locale
+    // is unknown. nil for NER programs, which are bilingual (Mandarin host + foreign
+    // examples) and must not be forced. Presence (non-nil) marks a podcast.
+    let audioLocale: String?
 
     /// PDF attachments, the only kind we can render inline.
     var pdfAttachments: [Attachment] { (attachments ?? []).filter(\.isPDF) }
@@ -208,13 +224,14 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.attachments = episode.attachments
         self.durationSeconds = episode.duration
         self.audioExt = nil   // NER audio is mp3
+        self.audioLocale = nil   // NER programs are bilingual; never force a language
     }
 
     /// Raw initializer for records built outside the NER API (e.g. podcast feeds).
     init(id: String, title: String, playDate: String?, audio: String?,
          programId: String, programName: String, language: String,
          coverURL: String?, durationSeconds: Int? = nil, audioExt: String? = nil,
-         attachments: [Attachment]? = nil) {
+         audioLocale: String? = nil, attachments: [Attachment]? = nil) {
         self.id = id
         self.title = title
         self.playDate = playDate
@@ -225,6 +242,7 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.coverURL = coverURL
         self.durationSeconds = durationSeconds
         self.audioExt = audioExt
+        self.audioLocale = audioLocale
         self.attachments = attachments
     }
 }

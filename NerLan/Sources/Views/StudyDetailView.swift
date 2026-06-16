@@ -15,6 +15,8 @@ struct StudyDetailView: View {
             case .transcript(let record):
                 TranscriptView(title: record.title,
                                text: ai.transcriptText(record.id) ?? "",
+                               episodeId: record.id,
+                               cues: ai.transcriptCues(record.id),
                                onClose: { study.clear() })
                     .id("transcript-\(record.id)")
             case .handout(let record):

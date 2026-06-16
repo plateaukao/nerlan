@@ -22,6 +22,11 @@ final class AIContentStore: ObservableObject {
 
     private let transcriptsDir: URL
     private let handoutsDir: URL
+    /// Sidecar timestamp cues for transcripts, keyed by episode id. Kept in their
+    /// own directory (not alongside the `.txt`) so the transcript/handout file
+    /// enumeration and counts stay clean. Local-only: not mirrored to iCloud, so a
+    /// transcript synced from another device shows without highlighting.
+    private let cuesDir: URL
     private let indexURL: URL
     /// episode id -> the episode's record, for every episode that has a
     /// transcript or handout. Powers the AI tab, supplies readable iCloud folder
@@ -39,9 +44,11 @@ final class AIContentStore: ObservableObject {
         let aiDir = docs.appendingPathComponent("ai", isDirectory: true)
         transcriptsDir = aiDir.appendingPathComponent("transcripts", isDirectory: true)
         handoutsDir = aiDir.appendingPathComponent("handouts", isDirectory: true)
+        cuesDir = aiDir.appendingPathComponent("cues", isDirectory: true)
         indexURL = aiDir.appendingPathComponent("index.json")
         try? FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: handoutsDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: cuesDir, withIntermediateDirectories: true)
 
         loadIndex()
         backfillIndex()
@@ -184,6 +191,7 @@ final class AIContentStore: ObservableObject {
 
     private func transcriptURL(_ id: String) -> URL { transcriptsDir.appendingPathComponent("\(id).txt") }
     private func handoutURL(_ id: String) -> URL { handoutsDir.appendingPathComponent("\(id).html") }
+    private func cuesURL(_ id: String) -> URL { cuesDir.appendingPathComponent("\(id).json") }
 
     func hasTranscript(_ id: String) -> Bool { FileManager.default.fileExists(atPath: transcriptURL(id).path) }
     func hasHandout(_ id: String) -> Bool { FileManager.default.fileExists(atPath: handoutURL(id).path) }
@@ -198,6 +206,14 @@ final class AIContentStore: ObservableObject {
 
     func transcriptText(_ id: String) -> String? { try? String(contentsOf: transcriptURL(id), encoding: .utf8) }
     func handoutHTML(_ id: String) -> String? { try? String(contentsOf: handoutURL(id), encoding: .utf8) }
+
+    /// Timestamp cues for an episode's transcript, when present. Returns nil for
+    /// transcripts made before cues existed (or with a no-timestamp model), which
+    /// the transcript screen renders without highlighting.
+    func transcriptCues(_ id: String) -> [TranscriptCue]? {
+        guard let data = try? Data(contentsOf: cuesURL(id)) else { return nil }
+        return try? JSONDecoder().decode([TranscriptCue].self, from: data)
+    }
 
     func jobState(_ kind: Kind, _ id: String) -> JobState? { jobs[key(kind, id)] }
 
@@ -215,7 +231,7 @@ final class AIContentStore: ObservableObject {
 
     func clearAll() {
         let ids = Array(records.keys)
-        for dir in [transcriptsDir, handoutsDir] {
+        for dir in [transcriptsDir, handoutsDir, cuesDir] {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for item in items { try? FileManager.default.removeItem(at: item) }
         }
@@ -232,6 +248,7 @@ final class AIContentStore: ObservableObject {
         objectWillChange.send()
         let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
         try? FileManager.default.removeItem(at: url)
+        if kind == .transcript { try? FileManager.default.removeItem(at: cuesURL(id)) }
         if syncOn { ICloudSync.shared.removeUp(cloudKind(kind), id: id) }
         jobs.removeValue(forKey: key(kind, id))
         // If nothing is left for this episode, drop its record (and its KVS copy).
@@ -267,16 +284,40 @@ final class AIContentStore: ObservableObject {
             }
             jobs[k] = .running("轉錄中…")
             // Long episodes are split into chunks (the gpt-4o-transcribe models
-            // cap input at 1400 s); transcribe each and join.
+            // cap input at 1400 s); transcribe each and join. Whisper also returns
+            // per-segment timestamps, collected (in absolute episode time) to drive
+            // sentence highlighting.
             let chunks = await SpeechAudioExporter.exportChunks(source)
             defer { cleanupChunks(chunks, original: source) }
-            let prompt = OpenAIService.transcriptionPrompt(for: record.language)
+            // A monolingual source (a podcast) carries its locale: force that
+            // language and drop the Chinese teaching-program prompt, which would
+            // otherwise bias a foreign-language podcast toward Chinese. NER programs
+            // are bilingual (Mandarin host + foreign examples), so they keep the
+            // priming prompt and no forced language, letting whisper switch per passage.
+            let locale = record.audioLocale
+            let prompt = locale == nil ? OpenAIService.transcriptionPrompt(for: record.language) : nil
             var parts: [String] = []
+            var segments: [OpenAIService.Segment] = []
             for (i, chunk) in chunks.enumerated() {
                 if chunks.count > 1 { jobs[k] = .running("轉錄中…（\(i + 1)/\(chunks.count)）") }
-                parts.append(try await OpenAIService.transcribe(
+                let result = try await OpenAIService.transcribe(
                     fileURL: chunk, model: settings.transcriptionModel, apiKey: settings.apiKey,
-                    prompt: prompt))
+                    prompt: prompt, language: locale)
+                parts.append(result.text)
+                if !result.segments.isEmpty {
+                    // Shift each chunk's timestamps onto the absolute episode
+                    // timeline. A chunk file is normally 0-based, so add its start
+                    // offset; but a trimmed chunk can carry a baked-in source-time
+                    // offset, detected here (times already near the chunk's absolute
+                    // position) and then used as-is. Single-chunk episodes — the
+                    // common case — are i == 0, so times pass through unchanged.
+                    let chunkStart = Double(i) * SpeechAudioExporter.maxChunkSeconds
+                    let minStart = result.segments.map(\.start).min() ?? 0
+                    let offset = (i > 0 && minStart > chunkStart * 0.5) ? 0 : chunkStart
+                    segments.append(contentsOf: result.segments.map {
+                        OpenAIService.Segment(start: $0.start + offset, text: $0.text)
+                    })
+                }
             }
             let raw = parts.joined(separator: "\n")
 
@@ -288,6 +329,18 @@ final class AIContentStore: ObservableObject {
                 raw, model: settings.chatModel, apiKey: settings.apiKey)) ?? raw
 
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
+
+            // B3b: map each cleaned display sentence back to the ASR segment that
+            // covers its first content character, so each gets a start time. Best
+            // effort — no segments (e.g. a non-whisper model) means no cues file
+            // and the transcript simply shows without highlighting.
+            let sentences = Self.displaySentences(text)
+            let cues = Self.alignCues(sentences: sentences, segments: segments)
+            if !cues.isEmpty, let data = try? JSONEncoder().encode(cues) {
+                try? data.write(to: cuesURL(record.id))
+            } else {
+                try? FileManager.default.removeItem(at: cuesURL(record.id))
+            }
             noteRecord(record)
             if syncOn { ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)   // publishes → hasTranscript-driven UI refreshes
@@ -371,6 +424,60 @@ final class AIContentStore: ObservableObject {
         }
         if !current.isEmpty { segments.append(current.joined(separator: "\n")) }
         return segments
+    }
+
+    /// The display sentences of a stored transcript: one trimmed, non-empty line
+    /// each. Must match how `TranscriptView` splits the same text so the cues line
+    /// up one-to-one with the rendered rows.
+    static func displaySentences(_ text: String) -> [String] {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Map each cleaned display `sentence` to a start time by aligning it to the
+    /// timed ASR `segments` (B3b). The chat re-segmentation only adds punctuation
+    /// and line breaks — it never changes the underlying content characters — so a
+    /// sentence's content (letters/digits, ignoring spaces and punctuation) appears
+    /// in order within the segment stream. We walk both monotonically and read off
+    /// each sentence's start from the segment covering its first content character.
+    /// Returns [] if there are no segments to align against.
+    static func alignCues(sentences: [String], segments: [OpenAIService.Segment]) -> [TranscriptCue] {
+        guard !segments.isEmpty, !sentences.isEmpty else { return [] }
+        func isContent(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+
+        // Flatten segment text into a stream of content characters, each tagged
+        // with its segment's start time.
+        var chars: [Character] = []
+        var times: [Double] = []
+        for seg in segments {
+            for c in seg.text where isContent(c) {
+                chars.append(c)
+                times.append(seg.start)
+            }
+        }
+        guard !chars.isEmpty else { return [] }
+
+        var cues: [TranscriptCue] = []
+        cues.reserveCapacity(sentences.count)
+        var idx = 0
+        var lastStart = times[0]
+        for sentence in sentences {
+            let content = sentence.filter(isContent)
+            if let first = content.first {
+                // Resync: find this sentence's first content char at/after the
+                // cursor, scanning a small window to absorb any minor ASR/chat drift.
+                let limit = min(chars.count, idx + 32)
+                var probe = idx
+                while probe < limit && chars[probe] != first { probe += 1 }
+                if probe < limit { idx = probe }
+            }
+            let start = idx < times.count ? times[idx] : lastStart
+            lastStart = start
+            cues.append(TranscriptCue(start: start, text: sentence))
+            idx = min(chars.count, idx + max(1, content.count))
+        }
+        return cues
     }
 
     /// "Part I（00:00–15:00）" — Roman numeral plus the part's audio time range

@@ -114,6 +114,11 @@ private final class Delegate: NSObject, XMLParserDelegate {
 
     func makeFeed() -> PodcastFeed {
         let language = Self.mappedLanguage(channelLanguage)
+        // The feed is monolingual, so keep the raw locale (e.g. "ko") to force the
+        // transcription language. Use "" when the feed declares no usable code: that
+        // still marks the record as a (monolingual) podcast — distinct from nil/NER —
+        // so transcription skips the Chinese teaching prompt and lets whisper detect.
+        let locale = Self.localeCode(channelLanguage) ?? ""
         let cover = channelImage.isEmpty ? nil : channelImage
         let records: [EpisodeRecord] = items.compactMap { acc in
             guard !acc.audio.isEmpty else { return nil }   // unplayable without audio
@@ -129,6 +134,7 @@ private final class Delegate: NSObject, XMLParserDelegate {
                 coverURL: acc.image.isEmpty ? cover : acc.image,
                 durationSeconds: Self.durationSeconds(acc.duration),
                 audioExt: Self.audioExt(type: acc.audioType, url: acc.audio),
+                audioLocale: locale,
                 attachments: nil)
         }
         return PodcastFeed(
@@ -200,6 +206,16 @@ private final class Delegate: NSObject, XMLParserDelegate {
         }
     }()
     private static let isoOut = ISO8601DateFormatter()
+
+    /// The feed's `<language>` reduced to an ISO-639-1 primary subtag (e.g.
+    /// "ko-KR" → "ko", "en-us" → "en"), suitable for the transcription `language`
+    /// parameter. nil when the feed declares no usable 2-letter code, in which case
+    /// whisper auto-detects.
+    private static func localeCode(_ code: String) -> String? {
+        let primary = code.lowercased().split(separator: "-").first.map(String.init) ?? ""
+        let isISO2 = primary.count == 2 && primary.allSatisfy { $0.isLetter && $0.isASCII }
+        return isISO2 ? primary : nil
+    }
 
     /// Map an RSS `<language>` code to the Chinese learning-language label the
     /// transcription prompt is primed for (see `OpenAIService.transcriptionPrompt`);

@@ -32,8 +32,32 @@ enum OpenAIService {
 
     // MARK: - Transcription
 
+    /// One timed unit of ASR output: the segment's text and the audio time (in
+    /// seconds, relative to the file transcribed) at which it begins.
+    struct Segment: Equatable {
+        let start: Double
+        let text: String
+    }
+
+    /// Result of a transcription: the full text plus, when the model supports it,
+    /// the per-segment timestamps. `segments` is empty for models that return no
+    /// timing (see `supportsSegments`), in which case only `text` is meaningful.
+    struct TranscriptionResult {
+        let text: String
+        let segments: [Segment]
+    }
+
+    /// Whether a transcription model returns segment timestamps. Only `whisper-1`
+    /// supports `response_format=verbose_json`; the `gpt-4o-transcribe` models
+    /// accept `json`/`text` only and would reject `verbose_json`.
+    static func supportsSegments(model: String) -> Bool {
+        model.lowercased().contains("whisper")
+    }
+
     /// Transcribe an audio file via `POST /audio/transcriptions` (multipart).
-    /// `response_format=text` makes the response body the raw transcript.
+    /// Whisper models are asked for `verbose_json` so the per-segment timestamps
+    /// come back (used to highlight the playing sentence); other models, which
+    /// don't support it, get `response_format=text` and yield no segments.
     ///
     /// `prompt` biases Whisper's output script/vocabulary. These are bilingual
     /// teaching programs (Mandarin host + foreign examples); without a prompt
@@ -41,9 +65,14 @@ enum OpenAIService {
     /// foreign speech into Chinese characters. Priming it with Traditional Chinese
     /// plus a native-script sample of the target language keeps both intact —
     /// build one with `transcriptionPrompt(for:)`.
+    /// `language` (ISO-639-1, e.g. "ko") tells the model the spoken language; set
+    /// for monolingual sources (podcasts) so it transcribes in that language
+    /// instead of collapsing toward the prompt's. Left nil for bilingual NER
+    /// content, which relies on the prompt and per-passage detection instead.
     static func transcribe(fileURL: URL, model: String, apiKey: String,
-                           prompt: String? = nil) async throws -> String {
+                           prompt: String? = nil, language: String? = nil) async throws -> TranscriptionResult {
         guard !apiKey.isEmpty else { throw APIError.missingKey }
+        let wantSegments = supportsSegments(model: model)
 
         let boundary = "Boundary-\(UUID().uuidString)"
         var req = URLRequest(url: base.appendingPathComponent("audio/transcriptions"))
@@ -59,7 +88,8 @@ enum OpenAIService {
             body.append("\(value)\r\n".data(using: .utf8)!)
         }
         field("model", model)
-        field("response_format", "text")
+        field("response_format", wantSegments ? "verbose_json" : "text")
+        if let language, !language.isEmpty { field("language", language) }
         if let prompt, !prompt.isEmpty { field("prompt", prompt) }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\n"
@@ -71,8 +101,23 @@ enum OpenAIService {
 
         let (data, response) = try await session.upload(for: req, from: body)
         try check(response, data)
-        guard let text = String(data: data, encoding: .utf8) else { throw APIError.decode }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard wantSegments else {
+            guard let text = String(data: data, encoding: .utf8) else { throw APIError.decode }
+            return TranscriptionResult(text: text.trimmingCharacters(in: .whitespacesAndNewlines), segments: [])
+        }
+        // verbose_json: { "text": "...", "segments": [ { "start": 0.0, "text": "..." }, ... ] }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decode
+        }
+        let segments: [Segment] = (json["segments"] as? [[String: Any]])?.compactMap { seg in
+            guard let start = seg["start"] as? Double, let text = seg["text"] as? String else { return nil }
+            return Segment(start: start, text: text)
+        } ?? []
+        let full = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let text = full.isEmpty ? segments.map(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines) : full
+        guard !text.isEmpty else { throw APIError.decode }
+        return TranscriptionResult(text: text, segments: segments)
     }
 
     /// A Whisper `prompt` for a program's target `language` (the Chinese name from
@@ -159,12 +204,16 @@ enum OpenAIService {
         規則：\
         1. 加入適當且必要的標點符號（句號、問號、驚嘆號、逗號等；中文用全形「，。？！」，外語用半形「,.?!」），並在每句結束後換行，每句一行。\
         2. 若原文該處已有適當的標點（例如已是「？」或「！」），請保留原樣，不要再額外加上句號或重複的標點。\
-        3. 絕對不可更動任何原始內容：不可翻譯、改寫、增刪、調整字詞或更改任何字元；簡繁字體與外語（日文、英文、韓文等）原文都必須原封不動保留。\
-        4. 只輸出處理後的逐字稿，每句一行，不要加編號，也不要任何其他說明文字。
+        3. 絕對不可更動任何原始內容：不可翻譯、改寫、增刪、調整字詞或更改任何字元。\
+        4. 【最重要】原文若含有非中文文字（韓文諺文 한글、日文假名、英文字母、其他外語等），必須一字不差地原樣保留其原始文字與字母，嚴禁將其翻譯、音譯、或轉寫成中文／漢字。例如「안녕하세요」必須維持為「안녕하세요」，絕不可變成「你好」或任何漢字；簡繁字體也一律維持原樣。\
+        5. 只輸出處理後的逐字稿，每句一行，不要加編號，也不要任何其他說明文字。
         """
         var segments: [String] = []
         for piece in chunk(raw, maxChars: 4000) {
-            let result = try await chat(system: system, user: piece, model: model, apiKey: apiKey)
+            // temperature 0: this is a mechanical punctuate-and-split task, so the
+            // model must stay faithful and never drift into translating/converting
+            // the foreign-language passages.
+            let result = try await chat(system: system, user: piece, model: model, apiKey: apiKey, temperature: 0)
             segments.append(result.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return segments.joined(separator: "\n")
@@ -173,14 +222,18 @@ enum OpenAIService {
     // MARK: - Helpers
 
     /// One round-trip to `POST /chat/completions`, returning the message content.
-    private static func chat(system: String, user: String, model: String, apiKey: String) async throws -> String {
-        let payload: [String: Any] = [
+    /// `temperature` is sent only when provided (0 for faithful, mechanical tasks
+    /// like sentence segmentation; omitted to keep the model's default elsewhere).
+    private static func chat(system: String, user: String, model: String, apiKey: String,
+                             temperature: Double? = nil) async throws -> String {
+        var payload: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],
             ],
         ]
+        if let temperature { payload["temperature"] = temperature }
         var req = URLRequest(url: base.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
