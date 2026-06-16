@@ -39,8 +39,13 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # Podcast feeds are arbitrary user-supplied domains and many (e.g. BBC,
+        # resolved from an Apple Podcasts URL) serve cover art and all audio over
+        # plain HTTP — some https enclosures even redirect to a cleartext CDN.
+        # Allowing arbitrary loads lets AVPlayer stream that audio and AsyncImage
+        # load that cover art; hosts can't be enumerated for a per-domain exception.
         NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: false
+          NSAllowsArbitraryLoads: true
         # Surface the iCloud container as a "NerLan" folder in the Files app so
         # the user can browse/export synced transcripts & handouts. Bump
         # CFBundleVersion whenever these keys change — iOS only re-reads the
