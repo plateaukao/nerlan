@@ -1,3 +1,4 @@
+import CryptoKit
 import UIKit
 
 /// Two-tier cover-image cache: an in-memory `NSCache` for the running session and
@@ -26,13 +27,21 @@ final class CoverImageCache {
     }
 
     /// Stable filename for a cover URL. The image endpoint's `key` query is a
-    /// unique id; fall back to a hash of the whole URL for anything else.
+    /// unique id; fall back to a hash of the whole URL for anything else (e.g.
+    /// podcast cover art, whose URLs carry no `key`).
+    ///
+    /// The fallback must be a *stable* hash: `String.hashValue` is seeded per
+    /// process, so it returns a different value every launch — which renamed each
+    /// podcast cover's cache file on every launch, so the file was never found and
+    /// the cover re-downloaded (and orphaned a new file) every time. SHA-256 is
+    /// deterministic, so the on-disk cache actually persists.
     private func key(for url: URL) -> String {
         if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
            let k = comps.queryItems?.first(where: { $0.name == "key" })?.value, !k.isEmpty {
             return k
         }
-        return String(UInt(bitPattern: url.absoluteString.hashValue))
+        return SHA256.hash(data: Data(url.absoluteString.utf8))
+            .map { String(format: "%02x", $0) }.joined()
     }
 
     /// Synchronous memory-only lookup, for instant first paint without a hop.
