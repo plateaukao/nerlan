@@ -182,7 +182,7 @@ final class ICloudSync {
         let items = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         for item in items {
             let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            if isDir, extractId(fromFolderName: item.lastPathComponent) == id { return item }
+            if isDir, parsedId(fromFolderName: item.lastPathComponent) == id { return item }
         }
         return nil
     }
@@ -198,10 +198,10 @@ final class ICloudSync {
     /// authoritatively (each device cleans its own ubiquity copy, so it converges
     /// across devices once they all run this build — unlike manual deletion, which
     /// just loses to another device re-uploading):
-    ///   1. Folders whose `[id]` suffix got truncated away by the 255-byte name
-    ///      limit (they contain "[" but don't end with "]"). The id is
-    ///      unrecoverable; the owning device re-creates a valid folder on its next
-    ///      mirror-up (now byte-budgeted, so it fits).
+    ///   1. Folders whose name got truncated by the 255-byte limit so they no
+    ///      longer map to an episode id (`parsedId` returns nil — the "[id]" suffix
+    ///      was chopped, possibly past the "[" itself). The owning device re-creates
+    ///      a valid folder on its next mirror-up (now NFD-byte-budgeted, so it fits).
     ///   2. iCloud conflict duplicates inside an episode folder (e.g.
     ///      "transcript 2.txt") — anything that isn't one of the canonical
     ///      `cloudFile` names. Content is write-once, so the extras are redundant.
@@ -211,8 +211,7 @@ final class ICloudSync {
         for folder in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] {
             let isDir = (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             guard isDir else { continue }
-            let name = folder.lastPathComponent
-            if name.contains("[") && !name.hasSuffix("]") {
+            if parsedId(fromFolderName: folder.lastPathComponent) == nil {
                 coordinatedRemove(folder)
                 continue
             }
@@ -239,7 +238,7 @@ final class ICloudSync {
 
     private func folderName(displayName: String?, id: String) -> String {
         guard let name = displayName.map(sanitize), !name.isEmpty else { return id }
-        // The "[id]" suffix is the round-trip key (see `extractId`) and must
+        // The "[id]" suffix is the round-trip key (see `parsedId`) and must
         // survive intact, so reserve its bytes first and fit as much of the
         // readable name as the remaining budget allows. Without this, a long CJK
         // title pushes the whole component past 255 bytes and the filesystem
@@ -264,29 +263,39 @@ final class ICloudSync {
     }
 
     /// The longest prefix of `s` that fits in `maxBytes` UTF-8 bytes without
-    /// splitting a character.
+    /// splitting a character — measured in the *decomposed* (NFD) form, because
+    /// the filesystem/iCloud store names decomposed: a Hangul syllable becomes 2-3
+    /// jamo (~3x the bytes), so budgeting by the in-memory NFC bytes under-counts
+    /// and the stored name still overruns the 255-byte limit and gets truncated.
     private func byteLimited(_ s: String, maxBytes: Int) -> String {
         guard maxBytes > 0 else { return "" }
-        guard s.utf8.count > maxBytes else { return s }
+        func nfdBytes(_ str: String) -> Int { str.decomposedStringWithCanonicalMapping.utf8.count }
+        guard nfdBytes(s) > maxBytes else { return s }
         var out = ""
-        var used = 0
         for ch in s {
-            let n = String(ch).utf8.count
-            if used + n > maxBytes { break }
+            if nfdBytes(out + String(ch)) > maxBytes { break }
             out.append(ch)
-            used += n
         }
         return out
     }
 
-    /// "<readable> [<id>]" -> id; a bare "<id>" folder -> itself.
-    private func extractId(fromFolderName name: String) -> String {
+    /// The episode id a folder maps to, or nil if its name can't be mapped:
+    /// a "<readable> [<id>]" folder must end with "]"; a bare-id folder is ASCII
+    /// letters/digits/hyphens only (a UUID or "pod-<hex>"). A name truncated by the
+    /// byte limit satisfies neither — it has Korean/spaces and no closing "]" — so
+    /// it returns nil and is skipped on pull and removed by cleanup, instead of
+    /// being mapped to a junk id.
+    private func parsedId(fromFolderName name: String) -> String? {
         if name.hasSuffix("]"), let open = name.lastIndex(of: "[") {
             let start = name.index(after: open)
             let end = name.index(before: name.endIndex)
             if start < end { return String(name[start..<end]) }
+            return nil
         }
-        return name
+        if !name.isEmpty, name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) {
+            return name
+        }
+        return nil
     }
 
     // MARK: - Incoming (iCloud -> local), via NSMetadataQuery on the main thread
@@ -356,11 +365,10 @@ final class ICloudSync {
         let comps = url.pathComponents
         guard let d = comps.firstIndex(of: "Documents"), comps.count == d + 3,
               let kind = Kind.allCases.first(where: { $0.cloudFile == comps[d + 2] }) else { return nil }
-        let folder = comps[d + 1]
-        // A folder whose "[id]" suffix was truncated away (has "[" but no closing
-        // "]") can't be mapped back to its episode; skip it instead of pulling it
-        // to a junk-id local file. The owning device re-creates a valid folder.
-        if folder.contains("[") && !folder.hasSuffix("]") { return nil }
-        return (kind, extractId(fromFolderName: folder))
+        // A folder whose name was truncated by the byte limit can't be mapped back
+        // to its episode; skip it instead of pulling it to a junk-id local file.
+        // The owning device re-creates a valid folder.
+        guard let id = parsedId(fromFolderName: comps[d + 1]) else { return nil }
+        return (kind, id)
     }
 }
