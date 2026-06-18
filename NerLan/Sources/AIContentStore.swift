@@ -61,6 +61,7 @@ final class AIContentStore: ObservableObject {
         try? FileManager.default.createDirectory(at: cuesDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: translationsDir, withIntermediateDirectories: true)
 
+        cleanupMalformedLocalContent()
         loadIndex()
         backfillIndex()
 
@@ -150,6 +151,25 @@ final class AIContentStore: ObservableObject {
             if let record = known[id] { records[id] = record; changed = true }
         }
         if changed { persistIndex() }
+    }
+
+    /// Delete locally-stored content whose id is malformed — junk an earlier bug
+    /// created by pulling truncated iCloud folders under their (unparseable) folder
+    /// name instead of an episode id. A real id is a UUID or "pod-<hex>": ASCII
+    /// letters, digits and hyphens only, so anything containing a space, bracket or
+    /// other character is junk. Removing it also stops it being mirrored back up.
+    private func cleanupMalformedLocalContent() {
+        let allowed = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-")
+        for dir in [transcriptsDir, handoutsDir, cuesDir, translationsDir] {
+            let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            for item in items {
+                let id = item.deletingPathExtension().lastPathComponent
+                if id.isEmpty || id.rangeOfCharacter(from: allowed.inverted) != nil {
+                    try? FileManager.default.removeItem(at: item)
+                }
+            }
+        }
     }
 
     // MARK: - Record KVS sync

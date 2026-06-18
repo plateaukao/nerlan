@@ -77,7 +77,10 @@ final class ICloudSync {
     /// Idempotent. Bulk upload of existing local content is driven separately by
     /// `AIContentStore` (it owns the readable names).
     func start() {
-        queue.async { self.cleanupLegacyLocked() }
+        queue.async {
+            self.cleanupLegacyLocked()
+            self.cleanupContainerLocked()
+        }
         DispatchQueue.main.async { self.startQuery() }
     }
 
@@ -102,7 +105,17 @@ final class ICloudSync {
             guard let root = self.cloudRootLocked() else { return }
             let source = self.localFile(kind, id)
             guard self.fm.fileExists(atPath: source.path) else { return }
-            let folder = self.episodeFolderLocked(root: root, id: id)
+            let existingFolder = self.episodeFolderLocked(root: root, id: id)
+            // Content is write-once: if the cloud already has this artifact (as a
+            // real file or a not-yet-downloaded ".<name>.icloud" placeholder),
+            // don't re-upload it. Re-replacing on every launch is what spawned the
+            // "transcript 2.txt" conflict duplicates. A changed artifact (e.g. a
+            // re-translation) routes through `removeUp` first, so the cloud copy is
+            // gone here and this proceeds to upload the new one.
+            if let folder = existingFolder, self.cloudArtifactExists(folder: folder, kind: kind) {
+                return
+            }
+            let folder = existingFolder
                 ?? root.appendingPathComponent(self.folderName(displayName: displayName, id: id), isDirectory: true)
             try? self.fm.createDirectory(at: folder, withIntermediateDirectories: true)
             let dest = folder.appendingPathComponent(kind.cloudFile)
@@ -113,6 +126,14 @@ final class ICloudSync {
                 try? self.fm.copyItem(at: source, to: url)
             }
         }
+    }
+
+    /// Whether `folder` already holds this `kind`'s artifact in iCloud — either the
+    /// materialized file or its undownloaded ".<name>.icloud" placeholder.
+    private func cloudArtifactExists(folder: URL, kind: Kind) -> Bool {
+        let file = folder.appendingPathComponent(kind.cloudFile)
+        let placeholder = folder.appendingPathComponent(".\(kind.cloudFile).icloud")
+        return fm.fileExists(atPath: file.path) || fm.fileExists(atPath: placeholder.path)
     }
 
     /// Remove one artifact from its episode folder; drop the folder if it leaves
@@ -173,6 +194,36 @@ final class ICloudSync {
         if fm.fileExists(atPath: legacy.path) { coordinatedRemove(legacy) }
     }
 
+    /// Heal two kinds of container garbage left by the old, buggy upload path,
+    /// authoritatively (each device cleans its own ubiquity copy, so it converges
+    /// across devices once they all run this build — unlike manual deletion, which
+    /// just loses to another device re-uploading):
+    ///   1. Folders whose `[id]` suffix got truncated away by the 255-byte name
+    ///      limit (they contain "[" but don't end with "]"). The id is
+    ///      unrecoverable; the owning device re-creates a valid folder on its next
+    ///      mirror-up (now byte-budgeted, so it fits).
+    ///   2. iCloud conflict duplicates inside an episode folder (e.g.
+    ///      "transcript 2.txt") — anything that isn't one of the canonical
+    ///      `cloudFile` names. Content is write-once, so the extras are redundant.
+    private func cleanupContainerLocked() {
+        guard let root = cloudRootLocked() else { return }
+        let canonical = Set(Kind.allCases.map(\.cloudFile))
+        for folder in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] {
+            let isDir = (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            guard isDir else { continue }
+            let name = folder.lastPathComponent
+            if name.contains("[") && !name.hasSuffix("]") {
+                coordinatedRemove(folder)
+                continue
+            }
+            for file in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] {
+                if !canonical.contains(file.lastPathComponent) {
+                    coordinatedRemove(file)
+                }
+            }
+        }
+    }
+
     private func coordinatedRemove(_ target: URL) {
         let coordinator = NSFileCoordinator()
         var err: NSError?
@@ -181,22 +232,50 @@ final class ICloudSync {
         }
     }
 
+    /// A path component maxes out at 255 *bytes*; stay safely under it (iCloud may
+    /// also append a " 2" conflict suffix). CJK is 3 bytes/char and emoji 4, so a
+    /// character cap is not enough.
+    private static let maxFolderNameBytes = 250
+
     private func folderName(displayName: String?, id: String) -> String {
         guard let name = displayName.map(sanitize), !name.isEmpty else { return id }
-        return "\(name) [\(id)]"
+        // The "[id]" suffix is the round-trip key (see `extractId`) and must
+        // survive intact, so reserve its bytes first and fit as much of the
+        // readable name as the remaining budget allows. Without this, a long CJK
+        // title pushes the whole component past 255 bytes and the filesystem
+        // chops off the "]" (or the id itself) — which silently breaks sync,
+        // since the pull side can no longer map the folder back to its episode.
+        let suffix = " [\(id)]"
+        let budget = Self.maxFolderNameBytes - suffix.utf8.count
+        let trimmed = byteLimited(name, maxBytes: budget).trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? id : trimmed + suffix
     }
 
-    /// Strip characters that break filenames or the `[id]` parsing, collapse
-    /// whitespace, and cap the length (filesystem names max ~255 bytes; CJK is
-    /// 3 bytes/char, so ~80 chars is a safe ceiling).
+    /// Strip characters that break filenames or the `[id]` parsing and collapse
+    /// whitespace. Length is bounded later by `folderName` (by bytes, around the
+    /// id), so no character cap here.
     private func sanitize(_ s: String) -> String {
         var out = s
         for bad in ["/", "\\", ":", "[", "]", "\n", "\r", "\t"] {
             out = out.replacingOccurrences(of: bad, with: " ")
         }
-        out = out.replacingOccurrences(of: " +", with: " ", options: .regularExpression)
+        return out.replacingOccurrences(of: " +", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
-        if out.count > 80 { out = String(out.prefix(80)).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// The longest prefix of `s` that fits in `maxBytes` UTF-8 bytes without
+    /// splitting a character.
+    private func byteLimited(_ s: String, maxBytes: Int) -> String {
+        guard maxBytes > 0 else { return "" }
+        guard s.utf8.count > maxBytes else { return s }
+        var out = ""
+        var used = 0
+        for ch in s {
+            let n = String(ch).utf8.count
+            if used + n > maxBytes { break }
+            out.append(ch)
+            used += n
+        }
         return out
     }
 
@@ -277,6 +356,11 @@ final class ICloudSync {
         let comps = url.pathComponents
         guard let d = comps.firstIndex(of: "Documents"), comps.count == d + 3,
               let kind = Kind.allCases.first(where: { $0.cloudFile == comps[d + 2] }) else { return nil }
-        return (kind, extractId(fromFolderName: comps[d + 1]))
+        let folder = comps[d + 1]
+        // A folder whose "[id]" suffix was truncated away (has "[" but no closing
+        // "]") can't be mapped back to its episode; skip it instead of pulling it
+        // to a junk-id local file. The owning device re-creates a valid folder.
+        if folder.contains("[") && !folder.hasSuffix("]") { return nil }
+        return (kind, extractId(fromFolderName: folder))
     }
 }
