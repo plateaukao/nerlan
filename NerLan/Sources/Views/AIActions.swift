@@ -101,11 +101,11 @@ struct AIActionButton: View {
     private var sheet: some View {
         switch kind {
         case .transcript:
-            TranscriptView(title: record.title, text: ai.transcriptText(record.id) ?? "",
-                           episodeId: record.id, cues: ai.transcriptCues(record.id),
+            TranscriptView(record: record, text: ai.transcriptText(record.id) ?? "",
+                           cues: ai.transcriptCues(record.id),
                            onClose: { showSheet = false })
         case .handout:
-            HandoutView(title: record.title, html: ai.handoutHTML(record.id) ?? "",
+            HandoutView(html: ai.handoutHTML(record.id) ?? "",
                         onClose: { showSheet = false })
         }
     }

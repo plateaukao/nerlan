@@ -13,15 +13,13 @@ struct StudyDetailView: View {
         Group {
             switch study.item {
             case .transcript(let record):
-                TranscriptView(title: record.title,
+                TranscriptView(record: record,
                                text: ai.transcriptText(record.id) ?? "",
-                               episodeId: record.id,
                                cues: ai.transcriptCues(record.id),
                                onClose: { study.clear() })
                     .id("transcript-\(record.id)")
             case .handout(let record):
-                HandoutView(title: record.title,
-                            html: ai.handoutHTML(record.id) ?? "",
+                HandoutView(html: ai.handoutHTML(record.id) ?? "",
                             onClose: { study.clear() })
                     .id("handout-\(record.id)")
             case .attachment(let record):

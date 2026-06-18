@@ -4,7 +4,6 @@ import WebKit
 /// Renders the saved HTML handout in a webview, shown in a sheet over the player
 /// so the user can read along while the episode keeps playing.
 struct HandoutView: View {
-    let title: String
     let html: String
     /// Called by the close button. On iPhone it dismisses the sheet; in the iPad
     /// panel it clears the panel.
@@ -14,7 +13,6 @@ struct HandoutView: View {
         NavigationStack {
             HandoutWebView(html: html)
                 .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

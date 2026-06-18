@@ -11,6 +11,14 @@ import UIKit
 /// kept on screen — a karaoke-style follow-along. Transcripts without cues (made
 /// before this existed, or with a no-timestamp model) simply render plain.
 ///
+/// Two toolbar controls tune the reading: a font-size button loops through three
+/// sizes (remembered across all transcript screens via `@AppStorage`), and a
+/// translate button loops the view through three modes — original, original plus
+/// per-sentence translation, and translation only — translating into the target
+/// language set in Settings. The translation is generated on demand, cached, and
+/// mirrored to iCloud by `AIContentStore`. Translate-mode resets to original each
+/// time a transcript opens, so opening one never silently starts a paid job.
+///
 /// Uses `List` (UITableView-backed, with cell reuse) with plain `Text` rows.
 /// `.textSelection` is deliberately NOT used per row — it makes every reused
 /// cell expensive to configure and causes stutter when flinging through the
@@ -19,20 +27,37 @@ import UIKit
 /// Playback position is read via `.onReceive` (not `@ObservedObject`) so `body`
 /// re-renders only when the active sentence changes, not on every 0.5s tick.
 struct TranscriptView: View {
-    let title: String
+    let record: EpisodeRecord
     let text: String
-    /// Episode id this transcript belongs to; highlighting only engages when this
-    /// matches the episode currently playing.
-    var episodeId: String? = nil
     /// Per-sentence start times, when available. nil ⇒ no highlighting.
     var cues: [TranscriptCue]? = nil
     /// Called by the close button. On iPhone it dismisses the sheet; in the iPad
     /// panel it clears the panel.
     var onClose: () -> Void
 
+    @EnvironmentObject private var ai: AIContentStore
+    @EnvironmentObject private var settings: SettingsStore
+
+    /// Reading font size, remembered across all transcript screens:
+    /// 0 = default, 1 = larger, 2 = largest.
+    @AppStorage("transcriptFontScale") private var fontScale = 0
+
+    /// View mode: 0 = original, 1 = original + translation, 2 = translation only.
+    /// Resets to 0 each time a transcript opens.
+    @State private var translateMode = 0
+    /// The mode to switch to once an in-flight translation finishes.
+    @State private var pendingMode: Int?
+    /// Translation aligned to the display sentences, for the current target
+    /// language. nil ⇒ not loaded / unavailable.
+    @State private var translation: [String]?
+    @State private var showTranslateError = false
+    @State private var translateErrorText = ""
+
     /// The sentence currently being spoken (index into `lines`), or nil when this
     /// isn't the playing episode / there are no cues / playback is before the first.
     @State private var activeLine: Int?
+
+    private var episodeId: String { record.id }
 
     private struct Line: Identifiable {
         let id: Int
@@ -56,8 +81,15 @@ struct TranscriptView: View {
     }
 
     private var isCurrentEpisode: Bool {
-        guard let episodeId else { return false }
-        return PlayerManager.shared.current?.id == episodeId
+        PlayerManager.shared.current?.id == episodeId
+    }
+
+    /// Point sizes for the three font-scale steps.
+    private var bodyFontSize: CGFloat { [17.0, 21.0, 26.0][min(max(fontScale, 0), 2)] }
+
+    private var translationJob: AIContentStore.JobState? { ai.translationJob(episodeId) }
+    private var isTranslating: Bool {
+        if case .running = translationJob { return true } else { return false }
     }
 
     var body: some View {
@@ -69,13 +101,22 @@ struct TranscriptView: View {
                     transcriptList
                 }
             }
-            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("關閉") { onClose() }
                 }
             }
+        }
+        .alert("翻譯失敗", isPresented: $showTranslateError) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(translateErrorText)
+        }
+        // Apply a pending mode switch when its translation job finishes, or surface
+        // the failure.
+        .onChange(of: translationJob) { _, state in
+            handleTranslationJobChange(state)
         }
     }
 
@@ -91,6 +132,26 @@ struct TranscriptView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    fontScale = (fontScale + 1) % 3
+                } label: {
+                    Image(systemName: "textformat.size")
+                        .foregroundStyle(fontScale == 0 ? Color.secondary : Color.accentColor)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if isTranslating {
+                    ProgressView()
+                } else {
+                    Button {
+                        cycleTranslate()
+                    } label: {
+                        Image(systemName: "globe")
+                            .foregroundStyle(translateMode == 0 ? Color.secondary : Color.accentColor)
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     UIPasteboard.general.string = lines.map(\.text).joined(separator: "\n")
@@ -109,15 +170,30 @@ struct TranscriptView: View {
     @ViewBuilder
     private func row(_ line: Line) -> some View {
         let active = (line.id == activeLine)
+        let translated = translationText(for: line)
+        // In translation-only mode, fall back to the original when a line has no
+        // translation, so the row is never blank.
+        let showOriginal = translateMode != 2 || (translated?.isEmpty ?? true)
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text("\(line.id + 1)")
-                .font(.caption.monospacedDigit())
+                .font(.system(size: max(11, bodyFontSize * 0.68)).monospacedDigit())
                 .foregroundStyle(active ? Color.accentColor : .secondary)
                 .frame(minWidth: 26, alignment: .trailing)
-            Text(line.text)
-                .font(.body)
-                .fontWeight(active ? .semibold : .regular)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                if showOriginal {
+                    Text(line.text)
+                        .font(.system(size: bodyFontSize))
+                        .fontWeight(active ? .semibold : .regular)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if translateMode != 0, let translated, !translated.isEmpty {
+                    Text(translated)
+                        .font(.system(size: translateMode == 2 ? bodyFontSize : bodyFontSize - 2))
+                        .fontWeight(active && translateMode == 2 ? .semibold : .regular)
+                        .foregroundStyle(translateMode == 2 ? Color.primary : Color.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
@@ -138,6 +214,60 @@ struct TranscriptView: View {
             }
         }
     }
+
+    /// The translation for a line, when one is loaded and aligned.
+    private func translationText(for line: Line) -> String? {
+        guard let translation, line.id < translation.count else { return nil }
+        return translation[line.id]
+    }
+
+    // MARK: - Translate cycling
+
+    /// Loop original → original+translation → translation-only → original.
+    /// Switching into a translated mode loads the cached translation if it matches
+    /// the current target language, otherwise kicks off generation (needs a key).
+    private func cycleTranslate() {
+        let next = (translateMode + 1) % 3
+        if next == 0 {
+            translateMode = 0
+            return
+        }
+        if let stored = ai.translation(episodeId), stored.language == settings.translationLanguage {
+            translation = stored.sentences
+            translateMode = next
+            return
+        }
+        guard settings.hasAPIKey else {
+            translateErrorText = "尚未設定 OpenAI API 金鑰，無法翻譯。"
+            showTranslateError = true
+            return
+        }
+        pendingMode = next
+        ai.translate(record)
+    }
+
+    private func handleTranslationJobChange(_ state: AIContentStore.JobState?) {
+        switch state {
+        case .none:
+            // Finished: apply the pending switch if the result is now available.
+            guard let pending = pendingMode else { return }
+            if let stored = ai.translation(episodeId), stored.language == settings.translationLanguage {
+                translation = stored.sentences
+                translateMode = pending
+            }
+            pendingMode = nil
+        case .failed(let message):
+            if pendingMode != nil {
+                pendingMode = nil
+                translateErrorText = message
+                showTranslateError = true
+            }
+        case .running:
+            break
+        }
+    }
+
+    // MARK: - Highlight
 
     /// Recompute which sentence is active for playback time `t`. No-ops (clears the
     /// highlight) unless this is the playing episode and we have cues. Writes the

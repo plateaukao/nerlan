@@ -72,6 +72,18 @@ struct TranscriptCue: Codable, Equatable {
     let text: String
 }
 
+/// A transcript translated into a target `language`, one entry per display
+/// sentence. `sentences` aligns 1:1 with `AIContentStore.displaySentences` (the
+/// same indexing the cues use), so the transcript screen can pair each rendered
+/// row with its translation. The `language` tag lets a device tell whether its
+/// cached translation matches the user's current target language; if not, it
+/// regenerates. Persisted as `Documents/ai/translations/{id}.json` and mirrored
+/// to iCloud alongside the transcript.
+struct StoredTranslation: Codable, Equatable {
+    let language: String
+    let sentences: [String]
+}
+
 // MARK: - Programs
 
 struct Program: Codable, Identifiable, Hashable {

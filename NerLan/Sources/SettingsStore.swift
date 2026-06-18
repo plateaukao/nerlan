@@ -10,6 +10,15 @@ final class SettingsStore: ObservableObject {
 
     static let defaultChatModel = "gpt-4o"
     static let defaultTranscriptionModel = "whisper-1"
+    static let defaultTranslationLanguage = "繁體中文"
+
+    /// Languages the transcript "translate" button can render into. Display names
+    /// are passed straight into the translation prompt, so they're written the way
+    /// a native reader expects to see them.
+    static let translationLanguageOptions = [
+        "繁體中文", "English", "日本語", "한국어", "Español",
+        "Français", "Deutsch", "Tiếng Việt", "Bahasa Indonesia", "ภาษาไทย",
+    ]
 
     /// Selectable transcription models. whisper-1 collapses bilingual audio into
     /// the dominant language; the gpt-4o-transcribe models handle code-switching
@@ -19,6 +28,7 @@ final class SettingsStore: ObservableObject {
     private static let keychainAccount = "openai-api-key"
     private static let chatModelKey = "openaiChatModel"
     private static let transcriptionModelKey = "openaiTranscriptionModel"
+    private static let translationLanguageKey = "translationLanguage"
     private static let cacheStreamedAudioKey = "cacheStreamedAudio"
     private static let syncToICloudKey = "syncAIContentToICloud"
 
@@ -38,6 +48,11 @@ final class SettingsStore: ObservableObject {
 
     @Published var transcriptionModel: String {
         didSet { UserDefaults.standard.set(transcriptionModel, forKey: Self.transcriptionModelKey) }
+    }
+
+    /// Language the transcript screen's "translate" button renders into.
+    @Published var translationLanguage: String {
+        didSet { UserDefaults.standard.set(translationLanguage, forKey: Self.translationLanguageKey) }
     }
 
     /// When on, an episode streamed to completion is saved for offline replay
@@ -80,6 +95,8 @@ final class SettingsStore: ObservableObject {
         chatModel = UserDefaults.standard.string(forKey: Self.chatModelKey) ?? Self.defaultChatModel
         transcriptionModel = UserDefaults.standard.string(forKey: Self.transcriptionModelKey)
             ?? Self.defaultTranscriptionModel
+        translationLanguage = UserDefaults.standard.string(forKey: Self.translationLanguageKey)
+            ?? Self.defaultTranslationLanguage
         cacheStreamedAudio = UserDefaults.standard.bool(forKey: Self.cacheStreamedAudioKey)
         syncToICloud = UserDefaults.standard.bool(forKey: Self.syncToICloudKey)
     }

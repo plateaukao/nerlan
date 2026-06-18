@@ -13,7 +13,8 @@ import Foundation
 ///     <programName> - <title> [<id>]/
 ///         transcript.txt
 ///         handout.html
-///         cues.json        (sentence timestamps; rides with the transcript)
+///         cues.json         (sentence timestamps; rides with the transcript)
+///         translation.json  (per-sentence translation; rides with the transcript)
 ///
 /// The `[<id>]` suffix is how the pull side maps a folder back to the local
 /// id-keyed file; the inner names are fixed ASCII so matching is immune to
@@ -24,12 +25,13 @@ final class ICloudSync {
     static let shared = ICloudSync()
 
     enum Kind: CaseIterable {
-        case transcript, handout, cues
+        case transcript, handout, cues, translation
         var localSub: String {
             switch self {
             case .transcript: return "transcripts"
             case .handout: return "handouts"
             case .cues: return "cues"
+            case .translation: return "translations"
             }
         }
         var localExt: String {
@@ -37,6 +39,7 @@ final class ICloudSync {
             case .transcript: return "txt"
             case .handout: return "html"
             case .cues: return "json"
+            case .translation: return "json"
             }
         }
         var cloudFile: String {
@@ -44,6 +47,7 @@ final class ICloudSync {
             case .transcript: return "transcript.txt"
             case .handout: return "handout.html"
             case .cues: return "cues.json"
+            case .translation: return "translation.json"
             }
         }
     }

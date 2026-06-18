@@ -20,6 +20,11 @@ final class AIContentStore: ObservableObject {
     /// Keyed "transcript:{id}" / "handout:{id}"; absence means idle.
     @Published private(set) var jobs: [String: JobState] = [:]
 
+    /// Translation jobs, keyed by episode id; absence means idle. Translation is
+    /// triggered from the transcript screen (not the shared AI action buttons), so
+    /// it gets its own published map rather than another `Kind`.
+    @Published private(set) var translationJobs: [String: JobState] = [:]
+
     private let transcriptsDir: URL
     private let handoutsDir: URL
     /// Sidecar timestamp cues for transcripts, keyed by episode id. Kept in their
@@ -27,6 +32,10 @@ final class AIContentStore: ObservableObject {
     /// enumeration and counts stay clean. Local-only: not mirrored to iCloud, so a
     /// transcript synced from another device shows without highlighting.
     private let cuesDir: URL
+    /// Per-episode transcript translations (one display sentence per line, in the
+    /// target language). Keyed by episode id like the other AI content; mirrored
+    /// to iCloud as a `translation.json` sidecar alongside the transcript.
+    private let translationsDir: URL
     private let indexURL: URL
     /// episode id -> the episode's record, for every episode that has a
     /// transcript or handout. Powers the AI tab, supplies readable iCloud folder
@@ -45,10 +54,12 @@ final class AIContentStore: ObservableObject {
         transcriptsDir = aiDir.appendingPathComponent("transcripts", isDirectory: true)
         handoutsDir = aiDir.appendingPathComponent("handouts", isDirectory: true)
         cuesDir = aiDir.appendingPathComponent("cues", isDirectory: true)
+        translationsDir = aiDir.appendingPathComponent("translations", isDirectory: true)
         indexURL = aiDir.appendingPathComponent("index.json")
         try? FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: handoutsDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: cuesDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: translationsDir, withIntermediateDirectories: true)
 
         loadIndex()
         backfillIndex()
@@ -88,11 +99,14 @@ final class AIContentStore: ObservableObject {
                 ICloudSync.shared.mirrorUp(cloudKind(kind), id: id, displayName: records[id].map(Self.displayName))
             }
         }
-        // Cue sidecars sync as a third kind (no AIContentStore.Kind of their own).
-        let cueFiles = (try? FileManager.default.contentsOfDirectory(at: cuesDir, includingPropertiesForKeys: nil)) ?? []
-        for file in cueFiles where file.pathExtension == "json" {
-            let id = file.deletingPathExtension().lastPathComponent
-            ICloudSync.shared.mirrorUp(.cues, id: id, displayName: records[id].map(Self.displayName))
+        // Cue + translation sidecars sync as their own ICloudSync kinds (neither
+        // has an AIContentStore.Kind of its own).
+        for (dir, kind) in [(cuesDir, ICloudSync.Kind.cues), (translationsDir, .translation)] {
+            let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.pathExtension == "json" {
+                let id = file.deletingPathExtension().lastPathComponent
+                ICloudSync.shared.mirrorUp(kind, id: id, displayName: records[id].map(Self.displayName))
+            }
         }
         enableRecordSync()
     }
@@ -198,13 +212,22 @@ final class AIContentStore: ObservableObject {
     private func transcriptURL(_ id: String) -> URL { transcriptsDir.appendingPathComponent("\(id).txt") }
     private func handoutURL(_ id: String) -> URL { handoutsDir.appendingPathComponent("\(id).html") }
     private func cuesURL(_ id: String) -> URL { cuesDir.appendingPathComponent("\(id).json") }
+    private func translationURL(_ id: String) -> URL { translationsDir.appendingPathComponent("\(id).json") }
 
     func hasTranscript(_ id: String) -> Bool { FileManager.default.fileExists(atPath: transcriptURL(id).path) }
     func hasHandout(_ id: String) -> Bool { FileManager.default.fileExists(atPath: handoutURL(id).path) }
 
+    /// The saved translation for an episode, if any. Carries its target language
+    /// so the transcript screen can tell whether it matches the current setting.
+    func translation(_ id: String) -> StoredTranslation? {
+        guard let data = try? Data(contentsOf: translationURL(id)) else { return nil }
+        return try? JSONDecoder().decode(StoredTranslation.self, from: data)
+    }
+
     /// Counts of saved content, for the 資料統計 screen.
     var transcriptCount: Int { fileCount(transcriptsDir) }
     var handoutCount: Int { fileCount(handoutsDir) }
+    var translationCount: Int { fileCount(translationsDir) }
 
     private func fileCount(_ dir: URL) -> Int {
         (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.count ?? 0
@@ -223,11 +246,20 @@ final class AIContentStore: ObservableObject {
 
     func jobState(_ kind: Kind, _ id: String) -> JobState? { jobs[key(kind, id)] }
 
+    func translationJob(_ id: String) -> JobState? { translationJobs[id] }
+
     // MARK: - Triggers
 
     func processTranscript(_ record: EpisodeRecord) {
         guard jobs[key(.transcript, record.id)] == nil, !hasTranscript(record.id) else { return }
         Task { await runTranscript(record) }
+    }
+
+    /// Generate (or regenerate, if the language changed) the translation for an
+    /// episode's transcript. No-ops while a job is already running for it.
+    func translate(_ record: EpisodeRecord) {
+        if case .running = translationJobs[record.id] { return }
+        Task { await runTranslation(record) }
     }
 
     func processHandout(_ record: EpisodeRecord) {
@@ -237,7 +269,7 @@ final class AIContentStore: ObservableObject {
 
     func clearAll() {
         let ids = Array(records.keys)
-        for dir in [transcriptsDir, handoutsDir, cuesDir] {
+        for dir in [transcriptsDir, handoutsDir, cuesDir, translationsDir] {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for item in items { try? FileManager.default.removeItem(at: item) }
         }
@@ -246,6 +278,7 @@ final class AIContentStore: ObservableObject {
         records.removeAll()
         persistIndex()
         jobs.removeAll()
+        translationJobs.removeAll()
     }
 
     /// Delete one episode's saved content of `kind`. `objectWillChange` fires so
@@ -255,8 +288,15 @@ final class AIContentStore: ObservableObject {
         let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
         try? FileManager.default.removeItem(at: url)
         if kind == .transcript {
+            // The cue + translation sidecars are derived from this transcript, so
+            // they go with it (a regenerated transcript may re-segment differently).
             try? FileManager.default.removeItem(at: cuesURL(id))
-            if syncOn { ICloudSync.shared.removeUp(.cues, id: id) }
+            try? FileManager.default.removeItem(at: translationURL(id))
+            translationJobs.removeValue(forKey: id)
+            if syncOn {
+                ICloudSync.shared.removeUp(.cues, id: id)
+                ICloudSync.shared.removeUp(.translation, id: id)
+            }
         }
         if syncOn { ICloudSync.shared.removeUp(cloudKind(kind), id: id) }
         jobs.removeValue(forKey: key(kind, id))
@@ -405,6 +445,34 @@ final class AIContentStore: ObservableObject {
             jobs.removeValue(forKey: k)
         } catch {
             jobs[k] = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Translate an episode's transcript into the current target language and save
+    /// it sentence-aligned. Overwrites any existing translation (e.g. when the
+    /// target language changed). Requires the transcript to already exist.
+    private func runTranslation(_ record: EpisodeRecord) async {
+        let id = record.id
+        let settings = SettingsStore.shared
+        let language = settings.translationLanguage
+        guard let text = transcriptText(id) else {
+            translationJobs[id] = .failed("找不到逐字稿")
+            return
+        }
+        translationJobs[id] = .running("翻譯中…")
+        do {
+            let sentences = Self.displaySentences(text)
+            let translated = try await OpenAIService.translateSentences(
+                sentences, to: language, model: settings.chatModel, apiKey: settings.apiKey)
+            let stored = StoredTranslation(language: language, sentences: translated)
+            try JSONEncoder().encode(stored).write(to: translationURL(id))
+            noteRecord(record)
+            if syncOn {
+                ICloudSync.shared.mirrorUp(.translation, id: id, displayName: Self.displayName(record))
+            }
+            translationJobs.removeValue(forKey: id)   // publishes → transcript screen reloads
+        } catch {
+            translationJobs[id] = .failed(error.localizedDescription)
         }
     }
 

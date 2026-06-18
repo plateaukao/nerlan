@@ -16,6 +16,7 @@ struct DataStatsView: View {
     @State private var cachedCount = 0
     @State private var transcriptCount = 0
     @State private var handoutCount = 0
+    @State private var translationCount = 0
 
     var body: some View {
         Form {
@@ -38,6 +39,7 @@ struct DataStatsView: View {
             Section("AI 內容") {
                 LabeledContent("逐字稿", value: "\(transcriptCount)")
                 LabeledContent("AI 講義", value: "\(handoutCount)")
+                LabeledContent("翻譯", value: "\(translationCount)")
             }
 
             if !languageRows.isEmpty {
@@ -66,6 +68,7 @@ struct DataStatsView: View {
         cachedCount = downloads.cachedEpisodeCount()
         transcriptCount = ai.transcriptCount
         handoutCount = ai.handoutCount
+        translationCount = ai.translationCount
     }
 
     static func byteText(_ bytes: Int64) -> String {

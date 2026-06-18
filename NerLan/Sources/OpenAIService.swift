@@ -219,6 +219,63 @@ enum OpenAIService {
         return segments.joined(separator: "\n")
     }
 
+    // MARK: - Translation
+
+    /// Translate a transcript's display `sentences` into `language` via the chat
+    /// model, returning one translated sentence per input sentence (same count,
+    /// same order) so the transcript screen can pair each row with its
+    /// translation. Sentences are sent in whole-line batches so the line count is
+    /// preserved; each batch's returned line count is reconciled to its input
+    /// count (pad/truncate) so a stray dropped/added line never shifts the
+    /// alignment of everything after it.
+    static func translateSentences(_ sentences: [String], to language: String,
+                                   model: String, apiKey: String) async throws -> [String] {
+        guard !apiKey.isEmpty else { throw APIError.missingKey }
+        guard !sentences.isEmpty else { return [] }
+        let system = """
+        你是一位專業翻譯。你會收到一段逐字稿，每行一句（內容可能混合中文與外語）。\
+        請將每一行都翻譯成「\(language)」。\
+        規則：\
+        1.【最重要】輸出的行數必須與輸入完全相同，每一行對應一句翻譯，順序一致，不可合併或拆分行。\
+        2. 不要加上編號、引號、原文或任何說明文字，只輸出翻譯後的句子，每句一行。\
+        3. 若某一行已經是目標語言或無法翻譯（例如僅為標點或語助詞），仍要輸出對應的一行（可原樣保留）。
+        """
+        var out: [String] = []
+        for batch in lineBatches(sentences, maxLines: 40, maxChars: 3000) {
+            // temperature 0: keep the mapping faithful and the line count stable.
+            let raw = try await chat(system: system, user: batch.joined(separator: "\n"),
+                                     model: model, apiKey: apiKey, temperature: 0)
+            var lines = raw.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            // Reconcile to the batch's line count so indices never drift.
+            if lines.count > batch.count { lines = Array(lines.prefix(batch.count)) }
+            while lines.count < batch.count { lines.append("") }
+            out.append(contentsOf: lines)
+        }
+        return out
+    }
+
+    /// Group whole sentences into batches of at most `maxLines` lines or
+    /// `maxChars` characters (whichever comes first), never splitting a sentence —
+    /// so each batch's line count equals its sentence count.
+    private static func lineBatches(_ sentences: [String], maxLines: Int, maxChars: Int) -> [[String]] {
+        var batches: [[String]] = []
+        var current: [String] = []
+        var chars = 0
+        for s in sentences {
+            if !current.isEmpty && (current.count >= maxLines || chars + s.count > maxChars) {
+                batches.append(current)
+                current = []
+                chars = 0
+            }
+            current.append(s)
+            chars += s.count + 1
+        }
+        if !current.isEmpty { batches.append(current) }
+        return batches
+    }
+
     // MARK: - Helpers
 
     /// One round-trip to `POST /chat/completions`, returning the message content.
