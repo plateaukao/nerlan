@@ -118,6 +118,11 @@ struct TranscriptView: View {
         .onChange(of: translationJob) { _, state in
             handleTranslationJobChange(state)
         }
+        // Keep the screen awake while the transcript is on screen (player caption
+        // mode, the standalone sheet, or the iPad panel) so it doesn't sleep
+        // mid-read. Restored as soon as the view goes away.
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
 
     private var transcriptList: some View {

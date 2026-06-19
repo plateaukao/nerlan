@@ -7,6 +7,7 @@ struct PlayerView: View {
     @EnvironmentObject var favorites: FavoritesStore
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var study: StudyPanel
+    @EnvironmentObject var ai: AIContentStore
     @Environment(\.dismiss) private var dismiss
 
     /// The scrubber needs the high-frequency playback position; observe the clock
@@ -17,6 +18,28 @@ struct PlayerView: View {
     @State private var scrubTime: Double = 0
     @State private var showAttachment = false
 
+    /// Caption mode: when on, the transcript takes over the cover/title area as a
+    /// follow-along. Available only when the playing episode has a transcript with
+    /// timestamp cues; reset per-episode so each starts on the cover.
+    @State private var captionMode = false
+    @State private var captionCues: [TranscriptCue]?
+
+    /// Whether the caption toggle should appear: a cued transcript exists.
+    private var captionsAvailable: Bool { !(captionCues?.isEmpty ?? true) }
+
+    /// Cheap per-tick signal that flips when the playing episode or its transcript
+    /// existence changes, so the (decoding) cue refresh runs only on real changes —
+    /// not on every clock tick that re-renders this sheet.
+    private var transcriptToken: String {
+        guard let id = player.current?.id else { return "" }
+        return "\(id)|\(ai.hasTranscript(id))"
+    }
+
+    private func refreshCaptionCues() {
+        guard let id = player.current?.id, ai.hasTranscript(id) else { captionCues = nil; return }
+        captionCues = ai.transcriptCues(id)
+    }
+
     var body: some View {
         VStack(spacing: 24) {
             Capsule()
@@ -24,23 +47,34 @@ struct PlayerView: View {
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)
 
-            Spacer()
+            let showCaptions = captionMode && captionsAvailable
+            if showCaptions, let record = player.current {
+                // Take over the cover/title/program/language area with the synced
+                // transcript; its 關閉 button (or the 字幕 toggle) exits caption mode.
+                TranscriptView(record: record,
+                               text: ai.transcriptText(record.id) ?? "",
+                               cues: captionCues,
+                               onClose: { captionMode = false })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Spacer()
 
-            CoverImage(urlString: player.current?.coverURL, size: 240)
-                .shadow(radius: 8)
+                CoverImage(urlString: player.current?.coverURL, size: 240)
+                    .shadow(radius: 8)
 
-            VStack(spacing: 6) {
-                Text(player.current?.title ?? "")
-                    .font(.title3.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                Text(player.current?.programName ?? "")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(player.current?.language ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                VStack(spacing: 6) {
+                    Text(player.current?.title ?? "")
+                        .font(.title3.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                    Text(player.current?.programName ?? "")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(player.current?.language ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
 
             // Scrubber
             VStack(spacing: 4) {
@@ -157,18 +191,36 @@ struct PlayerView: View {
                 .font(.subheadline)
             }
 
-            // AI tools (transcript / handout) — only once an API key is set.
+            // AI tools (caption / transcript / handout) — only once an API key is set.
             if let record = player.current, settings.hasAPIKey {
                 HStack(spacing: 44) {
+                    // Caption toggle: only when the transcript carries timestamps,
+                    // so the follow-along has cues to highlight/scroll.
+                    if captionsAvailable {
+                        Button {
+                            captionMode.toggle()
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: captionMode ? "text.below.photo.fill" : "text.below.photo")
+                                    .font(.title3)
+                                Text("字幕").font(.caption2)
+                            }
+                            .foregroundStyle(captionMode ? Color.accentColor : Color.primary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
                     AIActionButton(kind: .transcript, record: record)
                     AIActionButton(kind: .handout, record: record)
                 }
                 .foregroundStyle(.primary)
             }
 
-            Spacer()
+            if !(captionMode && captionsAvailable) { Spacer() }
         }
         .presentationDetents([.large])
+        .onAppear { refreshCaptionCues() }
+        .onChange(of: transcriptToken) { _, _ in refreshCaptionCues() }
+        .onChange(of: player.current?.id) { _, _ in captionMode = false }
         .sheet(isPresented: $showAttachment) {
             if let record = player.current {
                 AttachmentView(title: record.title, attachments: record.pdfAttachments,
