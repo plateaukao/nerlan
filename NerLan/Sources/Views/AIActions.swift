@@ -58,7 +58,7 @@ struct AIActionButton: View {
         .onChange(of: failure) { _, message in
             if let message, pendingOpen { pendingOpen = false; errorText = message; showError = true }
         }
-        .sheet(isPresented: $showSheet) { sheet }
+        .sheet(isPresented: $showSheet) { sheet.appEnvironment() }
         .alert("處理失敗", isPresented: $showError) {
             Button("重試") { pendingOpen = true; start() }
             Button("好", role: .cancel) {}

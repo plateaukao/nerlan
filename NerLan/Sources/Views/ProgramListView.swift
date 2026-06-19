@@ -58,8 +58,8 @@ struct ProgramListView: View {
                 .padding(.trailing, 6)
                 .padding(.top, 6)
             }
-            .sheet(isPresented: $showSettings) { SettingsView() }
-            .sheet(isPresented: $showAddPodcast) { AddPodcastView() }
+            .sheet(isPresented: $showSettings) { SettingsView().appEnvironment() }
+            .sheet(isPresented: $showAddPodcast) { AddPodcastView().appEnvironment() }
         }
     }
 
