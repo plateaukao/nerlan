@@ -53,6 +53,7 @@ final class FavoritesStore: ObservableObject {
             }
         }
         try? JSONEncoder().encode(favorites).write(to: episodesURL)
+        DriveSync.requestSync()
     }
 
     // MARK: - Programs
@@ -72,6 +73,30 @@ final class FavoritesStore: ObservableObject {
             }
         }
         try? JSONEncoder().encode(programs).write(to: programsURL)
+        DriveSync.requestSync()
+    }
+
+    // MARK: - Google Drive sync
+
+    /// Re-read the JSON files after a Google Drive pull rewrote them, and (when
+    /// iCloud sync is also on) push anything new into KVS so both backends stay in
+    /// step. The Drive engine owns the file write; this just adopts it in-memory.
+    func reload() {
+        if let data = try? Data(contentsOf: episodesURL),
+           let saved = try? JSONDecoder().decode([EpisodeRecord].self, from: data) {
+            favorites = saved
+        }
+        if let data = try? Data(contentsOf: programsURL),
+           let saved = try? JSONDecoder().decode([Program].self, from: data) {
+            programs = saved
+        }
+        guard syncing else { return }
+        for record in favorites where CloudKVStore.shared.data(forKey: epKey(record.id)) == nil {
+            if let data = try? JSONEncoder().encode(record) { CloudKVStore.shared.set(data, forKey: epKey(record.id)) }
+        }
+        for program in programs where CloudKVStore.shared.data(forKey: progKey(program.programId)) == nil {
+            if let data = try? JSONEncoder().encode(program) { CloudKVStore.shared.set(data, forKey: progKey(program.programId)) }
+        }
     }
 
     // MARK: - iCloud KVS sync
@@ -122,5 +147,7 @@ final class FavoritesStore: ObservableObject {
         programs = progs
         try? JSONEncoder().encode(favorites).write(to: episodesURL)
         try? JSONEncoder().encode(programs).write(to: programsURL)
+        // Keep the Drive mirror in step with an iCloud-driven change.
+        DriveSync.requestSync()
     }
 }

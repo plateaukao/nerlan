@@ -17,6 +17,9 @@ struct ContentView: View {
         .sheet(isPresented: $showPlayer) {
             PlayerView()
         }
+        // Pull anything new from Google Drive on launch (no-op unless Drive sync is
+        // on and signed in). iCloud sync starts itself from the store inits.
+        .task { DriveSync.shared.syncNow() }
     }
 
     /// iPad: the browser on the left, the transcript / handout / 講義 panel on

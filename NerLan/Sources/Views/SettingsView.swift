@@ -5,11 +5,13 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var ai: AIContentStore
+    @EnvironmentObject var drive: DriveSync
     @Environment(\.dismiss) private var dismiss
 
     @State private var showClearConfirm = false
     @State private var showClearCacheConfirm = false
     @State private var cacheBytes: Int64 = 0
+    @State private var signingIn = false
 
     var body: some View {
         NavigationStack {
@@ -74,6 +76,8 @@ struct SettingsView: View {
                     Text("開啟後，逐字稿與 AI 講義會備份到 iCloud，並同步到你登入相同 Apple ID 的其他裝置（重新安裝後也會自動復原）。音檔不會同步。需登入 iCloud 並開啟 iCloud 雲碟。")
                 }
 
+                driveSection
+
                 Section {
                     Button("清除所有 AI 內容", role: .destructive) {
                         showClearConfirm = true
@@ -116,6 +120,42 @@ struct SettingsView: View {
                 }
                 Button("取消", role: .cancel) {}
             }
+        }
+    }
+
+    /// Google Drive — the bridge to the Android app. Signed-out shows a sign-in
+    /// button; signed-in shows the account, the sync toggle, a manual "sync now",
+    /// and sign-out.
+    @ViewBuilder private var driveSection: some View {
+        Section {
+            if drive.accountEmail == nil {
+                Button {
+                    signingIn = true
+                    Task {
+                        await drive.signIn()
+                        signingIn = false
+                    }
+                } label: {
+                    HStack {
+                        Label("登入 Google 並開啟同步", systemImage: "person.crop.circle.badge.plus")
+                        if signingIn { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(signingIn)
+            } else {
+                LabeledContent("Google 帳戶", value: drive.accountEmail ?? "")
+                Toggle("同步到 Google Drive", isOn: $settings.syncToDrive)
+                Button("立即同步") { drive.syncNow() }
+                    .disabled(!settings.syncToDrive)
+                Button("登出 Google", role: .destructive) { drive.signOut() }
+            }
+            if let status = drive.status {
+                Text(status).font(.footnote).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Google Drive 同步")
+        } footer: {
+            Text("開啟後，最愛、AI 逐字稿與講義、收聽統計與 Podcast 訂閱會備份到你的 Google Drive（隱藏的應用程式資料夾），並與 Android 版 App 互通。可與 iCloud 同步並用。音檔不會同步。")
         }
     }
 

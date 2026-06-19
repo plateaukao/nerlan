@@ -138,6 +138,20 @@ final class AIContentStore: ObservableObject {
         if syncingRecords, let data = try? JSONEncoder().encode(record) {
             CloudKVStore.shared.set(data, forKey: Self.kvsPrefix + record.id)
         }
+        // Newly generated content (transcript/handout/cues/translation files +
+        // index) rides up to Drive on the next debounced sync.
+        DriveSync.requestSync()
+    }
+
+    /// Re-read the record index after a Google Drive pull rewrote `ai/index.json`,
+    /// and refresh the content-file-driven UI (a pull may have added transcript or
+    /// handout files even when the index didn't change).
+    func reloadIndex() {
+        if let data = try? Data(contentsOf: indexURL),
+           let map = try? JSONDecoder().decode([String: EpisodeRecord].self, from: data) {
+            records = map
+        }
+        objectWillChange.send()
     }
 
     /// Build records for content generated before the index stored them, using
@@ -204,7 +218,10 @@ final class AIContentStore: ObservableObject {
                 changed = true
             }
         }
-        if changed { persistIndex() }
+        if changed {
+            persistIndex()
+            DriveSync.requestSync()   // keep the Drive mirror in step with iCloud
+        }
     }
 
     private func storedContentIds() -> Set<String> {
@@ -299,6 +316,7 @@ final class AIContentStore: ObservableObject {
         persistIndex()
         jobs.removeAll()
         translationJobs.removeAll()
+        DriveSync.requestSync()
     }
 
     /// Delete one episode's saved content of `kind`. `objectWillChange` fires so
