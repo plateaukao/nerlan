@@ -37,6 +37,11 @@ final class ListeningStatsStore: ObservableObject {
     private var local = Stats()
 
     private let fileURL: URL
+    /// Other devices' blobs pulled from Google Drive, one `stats-{deviceId}.json`
+    /// per device. The KVS path keeps its peers in the key-value store; Drive can't
+    /// see those, so it mirrors here instead. Merged together (deduped by device) on
+    /// read, so a device syncing via both backends is never double-counted.
+    private let peersDir: URL
     private let deviceId: String
     private static let kvsPrefix = "stats-"
     private static let deviceIdKey = "listeningStatsDeviceId"
@@ -48,6 +53,7 @@ final class ListeningStatsStore: ObservableObject {
     private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         fileURL = docs.appendingPathComponent("listening-stats.json")
+        peersDir = docs.appendingPathComponent("stats-peers", isDirectory: true)
 
         if let saved = UserDefaults.standard.string(forKey: Self.deviceIdKey) {
             deviceId = saved
@@ -97,6 +103,7 @@ final class ListeningStatsStore: ObservableObject {
         local.completedCount += 1
         persistLocal()
         pushToKVS()
+        DriveSync.requestSync()
         revision += 1
     }
 
@@ -104,7 +111,13 @@ final class ListeningStatsStore: ObservableObject {
     func flush() {
         persistLocal()
         pushToKVS()
+        DriveSync.requestSync()
     }
+
+    /// Recompute the merged view after a Google Drive pull refreshed the peer blobs
+    /// in `stats-peers/`. The peers are read live from disk, so this just nudges the
+    /// observing screen.
+    func reloadDrivePeers() { revision += 1 }
 
     // MARK: - Persistence
 
@@ -151,16 +164,34 @@ final class ListeningStatsStore: ObservableObject {
 
     // MARK: - Merged read accessors (this device + other devices)
 
-    /// This device's blob plus every other device's blob from KVS.
+    /// This device's blob plus every other device's blob, from both backends. Peers
+    /// are keyed by device id so a device present in both iCloud KVS and Drive is
+    /// counted once (the G-counter only stays conflict-free if partitions don't
+    /// overlap).
     private func mergedStats() -> [Stats] {
-        var blobs = [local]
+        var peers: [String: Stats] = [:]
         if syncing {
             let ownKey = Self.kvsPrefix + deviceId
             for entry in CloudKVStore.shared.entries(prefix: Self.kvsPrefix) where entry.key != ownKey {
-                if let s = try? JSONDecoder().decode(Stats.self, from: entry.data) { blobs.append(s) }
+                if let s = try? JSONDecoder().decode(Stats.self, from: entry.data) {
+                    peers[String(entry.key.dropFirst(Self.kvsPrefix.count))] = s
+                }
             }
         }
-        return blobs
+        if SettingsStore.shared.syncToDrive {
+            let files = (try? FileManager.default.contentsOfDirectory(at: peersDir, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.pathExtension == "json" {
+                // "stats-{deviceId}.json" -> deviceId
+                let name = file.deletingPathExtension().lastPathComponent
+                guard name.hasPrefix(Self.kvsPrefix) else { continue }
+                let id = String(name.dropFirst(Self.kvsPrefix.count))
+                guard id != deviceId else { continue }
+                if let data = try? Data(contentsOf: file), let s = try? JSONDecoder().decode(Stats.self, from: data) {
+                    peers[id] = s
+                }
+            }
+        }
+        return [local] + Array(peers.values)
     }
 
     private func mergedDaily() -> [String: Double] {

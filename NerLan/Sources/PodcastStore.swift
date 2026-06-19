@@ -18,6 +18,14 @@ final class PodcastStore: ObservableObject {
     @Published private(set) var feeds: [PodcastFeed] = []
 
     private let storeURL: URL
+    /// Last-writer-wins subscription ledger (feed id -> entry), persisted as
+    /// `podcast-subs.json`. Only Google Drive sync uses it (the iCloud path tracks
+    /// subscriptions through per-feed KVS keys instead); it lets an unsubscribe — and
+    /// a later re-subscribe — propagate to the Android app, which a plain union-merge
+    /// of the feed list can't express. Maintained even when Drive is off (a cheap
+    /// extra file), so it's ready the moment sync is enabled.
+    private let subsURL: URL
+    private var ledger: [String: PodcastSubEntry] = [:]
 
     /// KVS key prefix for synced subscriptions (one small key per show).
     private static let kvsPrefix = "pod-feed-"
@@ -27,10 +35,12 @@ final class PodcastStore: ObservableObject {
     private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         storeURL = docs.appendingPathComponent("podcasts.json")
+        subsURL = docs.appendingPathComponent("podcast-subs.json")
         if let data = try? Data(contentsOf: storeURL),
            let saved = try? JSONDecoder().decode([PodcastFeed].self, from: data) {
             feeds = saved
         }
+        ledger = Self.loadLedger(subsURL)
         if SettingsStore.syncToICloudEnabled { enableSync() }
     }
 
@@ -48,6 +58,7 @@ final class PodcastStore: ObservableObject {
         let feed = try PodcastFeedParser.parse(data, feedURL: feedURL)
         upsert(feed)
         pushSubscription(feed.id)
+        recordSub(feed.id, subscribed: true)
         return feed
     }
 
@@ -56,12 +67,14 @@ final class PodcastStore: ObservableObject {
     func subscribe(_ feed: PodcastFeed) {
         upsert(feed)
         pushSubscription(feed.id)
+        recordSub(feed.id, subscribed: true)
     }
 
     func unsubscribe(id: String) {
         feeds.removeAll { $0.id == id }
         persist()
         if syncing { CloudKVStore.shared.remove(feedKey(id)) }
+        recordSub(id, subscribed: false)
     }
 
     /// Re-fetch a subscribed feed (its id is already the resolved RSS URL) and
@@ -85,6 +98,37 @@ final class PodcastStore: ObservableObject {
     private func persist() {
         try? JSONEncoder().encode(feeds).write(to: storeURL)
     }
+
+    // MARK: - Google Drive sync (subscription ledger + reload)
+
+    /// Record a subscribe/unsubscribe in the LWW ledger and fire a Drive sync.
+    private func recordSub(_ id: String, subscribed: Bool) {
+        ledger[id] = PodcastSubEntry(subscribed: subscribed, ts: Self.nowMillis)
+        saveLedger()
+        DriveSync.requestSync()
+    }
+
+    /// Re-read `podcasts.json` (the merged subscribed-feed set) and the ledger after
+    /// a Google Drive pull rewrote them.
+    func reload() {
+        if let data = try? Data(contentsOf: storeURL),
+           let saved = try? JSONDecoder().decode([PodcastFeed].self, from: data) {
+            feeds = saved
+        }
+        ledger = Self.loadLedger(subsURL)
+    }
+
+    private func saveLedger() {
+        try? JSONEncoder().encode(ledger).write(to: subsURL)
+    }
+
+    private static func loadLedger(_ url: URL) -> [String: PodcastSubEntry] {
+        guard let data = try? Data(contentsOf: url),
+              let map = try? JSONDecoder().decode([String: PodcastSubEntry].self, from: data) else { return [:] }
+        return map
+    }
+
+    private static var nowMillis: Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
     // MARK: - iCloud KVS sync (subscription list only)
 

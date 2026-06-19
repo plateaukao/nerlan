@@ -31,6 +31,7 @@ final class SettingsStore: ObservableObject {
     private static let translationLanguageKey = "translationLanguage"
     private static let cacheStreamedAudioKey = "cacheStreamedAudio"
     private static let syncToICloudKey = "syncAIContentToICloud"
+    private static let syncToDriveKey = "syncToGoogleDrive"
 
     /// Nonisolated read of the persisted toggle, for stores that aren't on the
     /// main actor (e.g. `FavoritesStore`) and need it during their own init.
@@ -84,6 +85,18 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// When on, the same local JSON source-of-truth is mirrored to the user's
+    /// Google Drive `appDataFolder` (see `DriveSync`) — the bridge to the Android
+    /// app. Independent of `syncToICloud`; both can be on at once. Off by default;
+    /// requires a Google sign-in (handled by `DriveSync`).
+    @Published var syncToDrive: Bool {
+        didSet {
+            UserDefaults.standard.set(syncToDrive, forKey: Self.syncToDriveKey)
+            if syncToDrive { DriveSync.shared.syncNow() }
+            else { DriveSync.shared.cancelPending() }
+        }
+    }
+
     /// Drives the visibility of the AI action icons.
     var hasAPIKey: Bool {
         !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -99,5 +112,6 @@ final class SettingsStore: ObservableObject {
             ?? Self.defaultTranslationLanguage
         cacheStreamedAudio = UserDefaults.standard.bool(forKey: Self.cacheStreamedAudioKey)
         syncToICloud = UserDefaults.standard.bool(forKey: Self.syncToICloudKey)
+        syncToDrive = UserDefaults.standard.bool(forKey: Self.syncToDriveKey)
     }
 }
