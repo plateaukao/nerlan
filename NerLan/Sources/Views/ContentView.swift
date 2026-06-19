@@ -80,7 +80,10 @@ struct ContentView: View {
             Tab("下載", systemImage: "arrow.down.circle") { DownloadsView() }
             Tab("AI", systemImage: "wand.and.stars") { AITabView() }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        // Only let the tab bar collapse on scroll while the mini player is
+        // showing (so the accessory slides inline, Apple Music style). With
+        // nothing playing there's no accessory, so keep the tab bar fixed.
+        .tabBarMinimizeBehavior(player.current != nil ? .onScrollDown : .never)
         .tabViewBottomAccessory(isEnabled: player.current != nil) {
             MiniPlayerAccessory { showPlayer = true }
         }

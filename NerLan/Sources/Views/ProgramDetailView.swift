@@ -199,9 +199,6 @@ struct EpisodeRow: View {
                 }
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: isCurrent && player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(playable ? Color.accentColor : Color.secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(episode.displayTitle)
                             .font(.subheadline)
@@ -219,7 +216,7 @@ struct EpisodeRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
