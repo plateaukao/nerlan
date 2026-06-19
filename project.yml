@@ -50,6 +50,12 @@ targets:
         # load that cover art; hosts can't be enumerated for a per-domain exception.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        # Bonjour discovery of the user's self-hosted whisperASR transcription
+        # server (Settings → 自訂 → 搜尋). iOS blocks mDNS browsing unless the
+        # service type is declared here and the purpose string is present.
+        NSLocalNetworkUsageDescription: NerLan 會在區域網路上搜尋你的 whisperASR 轉錄伺服器，方便自動填入伺服器網址。
+        NSBonjourServices:
+          - _whisperasr._tcp
         # Surface the iCloud container as a "NerLan" folder in the Files app so
         # the user can browse/export synced transcripts & handouts. Bump
         # CFBundleVersion whenever these keys change — iOS only re-reads the

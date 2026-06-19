@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var signingIn = false
     @State private var transcriptionProbe: ProbeState = .idle
     @State private var chatProbe: ProbeState = .idle
+    @State private var showServerDiscovery = false
 
     /// Result of a custom-server readiness check (see `verifyRow`).
     enum ProbeState: Equatable {
@@ -118,6 +119,11 @@ struct SettingsView: View {
                 }
                 Button("取消", role: .cancel) {}
             }
+            .sheet(isPresented: $showServerDiscovery) {
+                ServerDiscoveryView { server in
+                    settings.customTranscriptionURL = server.baseURL
+                }
+            }
         }
     }
 
@@ -158,10 +164,19 @@ struct SettingsView: View {
     /// model, and optional key (blank for keyless local servers).
     @ViewBuilder private var customSections: some View {
         Section {
-            TextField(SettingsStore.defaultCustomServerURL, text: $settings.customTranscriptionURL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
+            HStack {
+                TextField(SettingsStore.defaultCustomServerURL, text: $settings.customTranscriptionURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                Button {
+                    showServerDiscovery = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("搜尋區域網路伺服器")
+            }
             LabeledContent("轉錄模型") {
                 TextField(SettingsStore.defaultTranscriptionModel, text: $settings.customTranscriptionModel)
                     .multilineTextAlignment(.trailing)

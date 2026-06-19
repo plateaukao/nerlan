@@ -27,6 +27,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_whisperasr._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>NerLan 會在區域網路上搜尋你的 whisperASR 轉錄伺服器，方便自動填入伺服器網址。</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.danielkao.NerLan</key>
