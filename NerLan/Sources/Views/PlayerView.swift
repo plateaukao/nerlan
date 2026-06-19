@@ -225,6 +225,7 @@ struct PlayerView: View {
             if let record = player.current {
                 AttachmentView(title: record.title, attachments: record.pdfAttachments,
                                onClose: { showAttachment = false })
+                    .appEnvironment()
             }
         }
     }

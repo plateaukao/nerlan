@@ -202,6 +202,7 @@ struct RecordRow: View {
                 .sheet(isPresented: $showAttachment) {
                     AttachmentView(title: record.title, attachments: record.pdfAttachments,
                                    onClose: { showAttachment = false })
+                        .appEnvironment()
                 }
             }
 
