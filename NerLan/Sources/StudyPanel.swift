@@ -23,9 +23,14 @@ final class StudyPanel: ObservableObject {
 
     func clear() { item = nil }
 
-    /// Whether to show study content in the side panel (iPad) vs. a sheet
+    /// Whether to show study content in the side panel (iPad / Mac) vs. a sheet
     /// (iPhone, portrait-locked). Decided by device idiom rather than size class:
     /// size class is reported as `.compact` inside an iPad form sheet (the
     /// player) and would route the AI/handout buttons back to a sheet there.
-    static var usesSidePanel: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    /// `.mac` is included for Mac Catalyst's "Optimize for Mac" idiom (the
+    /// "Scaled to match iPad" idiom already reports `.pad`); the two-pane layout
+    /// reads well in a desktop window either way.
+    static var usesSidePanel: Bool {
+        [.pad, .mac].contains(UIDevice.current.userInterfaceIdiom)
+    }
 }
