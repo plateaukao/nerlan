@@ -4,7 +4,22 @@ import Foundation
 /// turn that transcript into a study handout. Holds no state, mirroring
 /// `ChannelPlusAPI`; credentials and model names are passed in by the caller.
 enum OpenAIService {
-    static let base = URL(string: "https://api.openai.com/v1")!
+    /// The official OpenAI endpoint. Used directly when the user picks the
+    /// "OpenAI 官方" provider; a custom provider supplies its own base URL.
+    static let officialBase = URL(string: "https://api.openai.com/v1")!
+
+    /// Everything a request needs: which OpenAI-compatible server to hit, the
+    /// (optional) bearer key, and the model name. Built by `SettingsStore` from
+    /// either the official or the custom provider settings, so this layer stays
+    /// oblivious to which one is active. `requiresKey` is true only for the
+    /// official endpoint — custom (e.g. a LAN whisper/LLM server) often needs
+    /// no key, so an empty `apiKey` then just omits the Authorization header.
+    struct Config: Sendable {
+        let baseURL: URL
+        let apiKey: String
+        let model: String
+        var requiresKey: Bool = true
+    }
 
     /// Transcribing a ~30-min episode (and generating a handout from a long
     /// transcript) can take minutes server-side; the default 60s request
@@ -69,15 +84,15 @@ enum OpenAIService {
     /// for monolingual sources (podcasts) so it transcribes in that language
     /// instead of collapsing toward the prompt's. Left nil for bilingual NER
     /// content, which relies on the prompt and per-passage detection instead.
-    static func transcribe(fileURL: URL, model: String, apiKey: String,
+    static func transcribe(fileURL: URL, config: Config,
                            prompt: String? = nil, language: String? = nil) async throws -> TranscriptionResult {
-        guard !apiKey.isEmpty else { throw APIError.missingKey }
-        let wantSegments = supportsSegments(model: model)
+        guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
+        let wantSegments = supportsSegments(model: config.model)
 
         let boundary = "Boundary-\(UUID().uuidString)"
-        var req = URLRequest(url: base.appendingPathComponent("audio/transcriptions"))
+        var req = URLRequest(url: config.baseURL.appendingPathComponent("audio/transcriptions"))
         req.httpMethod = "POST"
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         let fileData = try Data(contentsOf: fileURL)
@@ -87,7 +102,7 @@ enum OpenAIService {
             body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
             body.append("\(value)\r\n".data(using: .utf8)!)
         }
-        field("model", model)
+        field("model", config.model)
         field("response_format", wantSegments ? "verbose_json" : "text")
         if let language, !language.isEmpty { field("language", language) }
         if let prompt, !prompt.isEmpty { field("prompt", prompt) }
@@ -118,6 +133,75 @@ enum OpenAIService {
         let text = full.isEmpty ? segments.map(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines) : full
         guard !text.isEmpty else { throw APIError.decode }
         return TranscriptionResult(text: text, segments: segments)
+    }
+
+    // MARK: - Readiness probes
+
+    /// Probe the transcription endpoint without consuming a real episode: POST a
+    /// fraction of a second of silence (a valid WAV) and require a 2xx. Only the
+    /// HTTP status matters — silence transcribes to nothing, which is success, so
+    /// unlike `transcribe` this never treats an empty body as a failure. Throws
+    /// the same `APIError`s (bad URL → networking error, wrong key → server 401,
+    /// unknown model → server 404) so the UI can show exactly what's wrong.
+    static func verifyTranscription(config: Config) async throws {
+        guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: config.baseURL.appendingPathComponent("audio/transcriptions"))
+        req.httpMethod = "POST"
+        if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        field("model", config.model)
+        field("response_format", "text")
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"probe.wav\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        body.append(silentWAV())
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        let (data, response) = try await session.upload(for: req, from: body)
+        try check(response, data)
+    }
+
+    /// Probe the chat endpoint: a one-token round-trip. Reuses `chat`, which
+    /// throws on any non-2xx or unparseable response, so a clean return means the
+    /// URL, key and model all work for handouts/translation.
+    static func verifyChat(config: Config) async throws {
+        guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
+        _ = try await chat(system: "You are a connectivity check.",
+                           user: "Reply with the single word: OK", config: config, temperature: 0)
+    }
+
+    /// A minimal valid 16-bit mono PCM WAV of silence, for the transcription
+    /// probe — every OpenAI-compatible transcription endpoint accepts WAV.
+    private static func silentWAV(seconds: Double = 0.5, sampleRate: Int = 16000) -> Data {
+        let frames = Int(Double(sampleRate) * seconds)
+        let dataBytes = frames * 2  // 16-bit mono
+        var d = Data()
+        func le32(_ v: UInt32) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        func le16(_ v: UInt16) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        d.append("RIFF".data(using: .ascii)!)
+        le32(UInt32(36 + dataBytes))
+        d.append("WAVE".data(using: .ascii)!)
+        d.append("fmt ".data(using: .ascii)!)
+        le32(16)                            // PCM fmt chunk size
+        le16(1)                             // format = PCM
+        le16(1)                             // channels = mono
+        le32(UInt32(sampleRate))            // sample rate
+        le32(UInt32(sampleRate * 2))        // byte rate (rate * channels * bytesPerSample)
+        le16(2)                             // block align (channels * bytesPerSample)
+        le16(16)                            // bits per sample
+        d.append("data".data(using: .ascii)!)
+        le32(UInt32(dataBytes))
+        d.append(Data(count: dataBytes))    // silence
+        return d
     }
 
     /// A Whisper `prompt` for a program's target `language` (the Chinese name from
@@ -164,9 +248,8 @@ enum OpenAIService {
     /// 內容說明/文法重點/例句/單字, Part II → …. When nil (≤15 min) the four
     /// sections are top-level `h2`.
     static func generateHandout(transcript: String, record: EpisodeRecord,
-                                partTitle: String? = nil,
-                                model: String, apiKey: String) async throws -> String {
-        guard !apiKey.isEmpty else { throw APIError.missingKey }
+                                partTitle: String? = nil, config: Config) async throws -> String {
+        guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
 
         let tag = partTitle == nil ? "h2" : "h3"
         let partNote = partTitle == nil ? ""
@@ -185,7 +268,7 @@ enum OpenAIService {
         不要輸出 <html>、<head>、<body> 標籤，也不要使用 Markdown 或程式碼圍欄。
         """
         let user = "節目：\(record.programName)\n單集：\(record.title)\n\n逐字稿：\n\(transcript)"
-        let fragment = stripCodeFence(try await chat(system: system, user: user, model: model, apiKey: apiKey))
+        let fragment = stripCodeFence(try await chat(system: system, user: user, config: config))
         guard let partTitle else { return fragment }
         return "<h2>\(partTitle)</h2>\n\(fragment)"
     }
@@ -197,8 +280,8 @@ enum OpenAIService {
     /// CJK) often returns text with little punctuation. Long transcripts are
     /// chunked so no single response gets truncated. Returns sentences joined by
     /// newlines.
-    static func segmentTranscript(_ raw: String, model: String, apiKey: String) async throws -> String {
-        guard !apiKey.isEmpty else { throw APIError.missingKey }
+    static func segmentTranscript(_ raw: String, config: Config) async throws -> String {
+        guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
         let system = """
         你是一個只負責加上標點與斷句的文字編輯器。你會收到一段語音辨識（ASR）產生的逐字稿，通常缺少標點。\
         規則：\
@@ -213,7 +296,7 @@ enum OpenAIService {
             // temperature 0: this is a mechanical punctuate-and-split task, so the
             // model must stay faithful and never drift into translating/converting
             // the foreign-language passages.
-            let result = try await chat(system: system, user: piece, model: model, apiKey: apiKey, temperature: 0)
+            let result = try await chat(system: system, user: piece, config: config, temperature: 0)
             segments.append(result.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return segments.joined(separator: "\n")
@@ -229,8 +312,8 @@ enum OpenAIService {
     /// count (pad/truncate) so a stray dropped/added line never shifts the
     /// alignment of everything after it.
     static func translateSentences(_ sentences: [String], to language: String,
-                                   model: String, apiKey: String) async throws -> [String] {
-        guard !apiKey.isEmpty else { throw APIError.missingKey }
+                                   config: Config) async throws -> [String] {
+        guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
         guard !sentences.isEmpty else { return [] }
         let system = """
         你是一位專業翻譯。你會收到一段逐字稿，每行一句（內容可能混合中文與外語）。\
@@ -244,7 +327,7 @@ enum OpenAIService {
         for batch in lineBatches(sentences, maxLines: 40, maxChars: 3000) {
             // temperature 0: keep the mapping faithful and the line count stable.
             let raw = try await chat(system: system, user: batch.joined(separator: "\n"),
-                                     model: model, apiKey: apiKey, temperature: 0)
+                                     config: config, temperature: 0)
             var lines = raw.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -281,19 +364,19 @@ enum OpenAIService {
     /// One round-trip to `POST /chat/completions`, returning the message content.
     /// `temperature` is sent only when provided (0 for faithful, mechanical tasks
     /// like sentence segmentation; omitted to keep the model's default elsewhere).
-    private static func chat(system: String, user: String, model: String, apiKey: String,
+    private static func chat(system: String, user: String, config: Config,
                              temperature: Double? = nil) async throws -> String {
         var payload: [String: Any] = [
-            "model": model,
+            "model": config.model,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],
             ],
         ]
         if let temperature { payload["temperature"] = temperature }
-        var req = URLRequest(url: base.appendingPathComponent("chat/completions"))
+        var req = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -331,13 +414,30 @@ enum OpenAIService {
     private static func check(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse,
               !(200..<300).contains(http.statusCode) else { return }
-        // OpenAI errors look like { "error": { "message": ... } }.
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let error = json["error"] as? [String: Any],
-           let message = error["message"] as? String {
-            throw APIError.server(message)
+        // OpenAI errors look like { "error": { "message": ... } }; many
+        // OpenAI-compatible servers do too, but some (e.g. Ollama) use
+        // { "error": "..." } or { "message": "..." }. Surface whichever is present.
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let error = json["error"] as? [String: Any], let message = error["message"] as? String {
+                throw APIError.server(message)
+            }
+            if let message = json["error"] as? String {
+                throw APIError.server(message)
+            }
+            if let message = json["message"] as? String {
+                throw APIError.server(message)
+            }
         }
-        throw APIError.server("OpenAI 請求失敗（HTTP \(http.statusCode)）")
+        // Otherwise (a custom server with a non-standard error body, an HTML
+        // error page, a proxy, …) include the host, status and a snippet of the
+        // raw body so the failure is diagnosable rather than a bare "請求失敗".
+        let host = http.url?.host ?? "伺服器"
+        var detail = ""
+        if let body = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty {
+            detail = "：" + (body.count > 300 ? String(body.prefix(300)) + "…" : body)
+        }
+        throw APIError.server("\(host) 請求失敗（HTTP \(http.statusCode)）\(detail)")
     }
 
     /// Models sometimes wrap HTML in ```html fences despite instructions.

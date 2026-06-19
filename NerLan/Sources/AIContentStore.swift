@@ -383,12 +383,13 @@ final class AIContentStore: ObservableObject {
             // priming prompt and no forced language, letting whisper switch per passage.
             let locale = record.audioLocale
             let prompt = locale == nil ? OpenAIService.transcriptionPrompt(for: record.language) : nil
+            let txConfig = settings.transcriptionConfig
             var parts: [String] = []
             var segments: [OpenAIService.Segment] = []
             for (i, chunk) in chunks.enumerated() {
                 if chunks.count > 1 { jobs[k] = .running("轉錄中…（\(i + 1)/\(chunks.count)）") }
                 let result = try await OpenAIService.transcribe(
-                    fileURL: chunk, model: settings.transcriptionModel, apiKey: settings.apiKey,
+                    fileURL: chunk, config: txConfig,
                     prompt: prompt, language: locale)
                 parts.append(result.text)
                 if !result.segments.isEmpty {
@@ -413,7 +414,7 @@ final class AIContentStore: ObservableObject {
             // step fails, keep the raw transcript so the paid transcription isn't lost.
             jobs[k] = .running("整理句子中…")
             let text = (try? await OpenAIService.segmentTranscript(
-                raw, model: settings.chatModel, apiKey: settings.apiKey)) ?? raw
+                raw, config: settings.chatConfig)) ?? raw
 
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
 
@@ -464,6 +465,7 @@ final class AIContentStore: ObservableObject {
             // its own Part I/II/III handout section; shorter ones stay a single
             // handout.
             let segments = Self.handoutSegments(transcript, durationSeconds: record.durationSeconds)
+            let chatConfig = settings.chatConfig
             var fragments: [String] = []
             for (i, segment) in segments.enumerated() {
                 jobs[k] = segments.count > 1
@@ -474,7 +476,7 @@ final class AIContentStore: ObservableObject {
                     : nil
                 fragments.append(try await OpenAIService.generateHandout(
                     transcript: segment, record: record, partTitle: partTitle,
-                    model: settings.chatModel, apiKey: settings.apiKey))
+                    config: chatConfig))
             }
             let html = Self.wrapHTML(fragments.joined(separator: "\n"), title: record.title)
             try html.data(using: .utf8)?.write(to: handoutURL(record.id))
@@ -501,7 +503,7 @@ final class AIContentStore: ObservableObject {
         do {
             let sentences = Self.displaySentences(text)
             let translated = try await OpenAIService.translateSentences(
-                sentences, to: language, model: settings.chatModel, apiKey: settings.apiKey)
+                sentences, to: language, config: settings.chatConfig)
             let stored = StoredTranslation(language: language, sentences: translated)
             try JSONEncoder().encode(stored).write(to: translationURL(id))
             noteRecord(record)
