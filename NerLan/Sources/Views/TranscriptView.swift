@@ -31,6 +31,9 @@ struct TranscriptView: View {
     let text: String
     /// Per-sentence start times, when available. nil ⇒ no highlighting.
     var cues: [TranscriptCue]? = nil
+    /// When true, shadowing turns on as the view appears (the player's one-tap 跟讀
+    /// entry). Other entry points leave it off.
+    var startShadowing = false
     /// Called by the close button. On iPhone it dismisses the sheet; in the iPad
     /// panel it clears the panel.
     var onClose: () -> Void
@@ -57,6 +60,23 @@ struct TranscriptView: View {
     /// isn't the playing episode / there are no cues / playback is before the first.
     @State private var activeLine: Int?
 
+    /// Shadowing mode: when on, the targeted sentence loops and a sentence-transport
+    /// bar appears so the learner can repeat each line. Only offered when this is
+    /// the playing episode and the transcript has timestamp cues. Reset per open.
+    @State private var shadowing = false
+    /// The sentence armed for looping (index into cues). Tracked independently of
+    /// `activeLine` so the highlight and prev/next stepping stay stable across the
+    /// loop's lead-in instead of racing the playback clock.
+    @State private var shadowIndex: Int?
+    /// Repeat count per sentence: 0 = loop forever, else play it N times then
+    /// stop. Remembered across transcript screens.
+    @AppStorage("shadowLoopCount") private var loopCount = 0
+
+    /// Voice recording for shadowing: record yourself reading the sentence, then
+    /// play it back against the original.
+    @ObservedObject private var recorder = ShadowRecorder.shared
+    @State private var showMicDenied = false
+
     private var episodeId: String { record.id }
 
     private struct Line: Identifiable {
@@ -82,6 +102,80 @@ struct TranscriptView: View {
 
     private var isCurrentEpisode: Bool {
         PlayerManager.shared.current?.id == episodeId
+    }
+
+    /// Shadowing needs the playing episode plus timestamp cues to loop by.
+    private var shadowingAvailable: Bool {
+        isCurrentEpisode && !(cues?.isEmpty ?? true)
+    }
+
+    /// Index used for row highlight/scroll: the loop target while shadowing, else
+    /// the sentence being spoken.
+    private var highlightIndex: Int? { shadowing ? shadowIndex : activeLine }
+
+    /// The `[start, end)` span of sentence `index`: its cue start to the next cue's
+    /// start (the episode duration for the last sentence).
+    private func region(for index: Int) -> (start: Double, end: Double)? {
+        guard let cues, index >= 0, index < cues.count else { return nil }
+        let start = cues[index].start
+        let end = index + 1 < cues.count ? cues[index + 1].start
+                                         : PlayerManager.shared.clock.duration
+        return (start, end)
+    }
+
+    /// Arm the loop on sentence `index` and remember it as the shadow target.
+    private func loopSentence(_ index: Int?) {
+        guard let index, let r = region(for: index) else { return }
+        shadowIndex = index
+        PlayerManager.shared.loopSegment(start: r.start, end: r.end,
+                                         times: loopCount == 0 ? nil : loopCount)
+    }
+
+    private func toggleShadowing() {
+        shadowing.toggle()
+        if shadowing {
+            loopSentence(activeLine ?? 0)   // start repeating the current line
+        } else {
+            shadowIndex = nil
+            PlayerManager.shared.clearLoop()
+            recorder.reset()
+        }
+    }
+
+    private var loopCountLabel: String { loopCount == 0 ? "∞" : "×\(loopCount)" }
+
+    // MARK: - Voice recording
+
+    /// Per-sentence key for the learner's recording.
+    private func recordKey(_ index: Int) -> String { "\(record.id)-\(index)" }
+
+    private func toggleRecord() async {
+        guard let i = shadowIndex else { return }
+        if recorder.isRecording {
+            recorder.stopRecording(thenPlay: true)   // hear your take right after
+        } else if recorder.permissionDenied {
+            showMicDenied = true
+        } else if await recorder.startRecording(key: recordKey(i)) == false {
+            showMicDenied = true
+        }
+    }
+
+    /// After a finite sentence loop finishes its repeats, automatically start
+    /// recording the learner's turn (∞ loops never finish, so they don't trigger it).
+    private func autoStartRecord() async {
+        guard shadowing, let i = shadowIndex,
+              !recorder.isRecording, !recorder.isPlaying else { return }
+        if recorder.permissionDenied { showMicDenied = true; return }
+        if await recorder.startRecording(key: recordKey(i)) == false { showMicDenied = true }
+    }
+
+    private func togglePlayMine() {
+        guard let i = shadowIndex else { return }
+        if recorder.isPlaying {
+            recorder.stopPlayback()
+        } else {
+            recorder.playRecording(key: recordKey(i))
+        }
     }
 
     /// Point sizes for the three font-scale steps.
@@ -113,6 +207,11 @@ struct TranscriptView: View {
         } message: {
             Text(translateErrorText)
         }
+        .alert("無法使用麥克風", isPresented: $showMicDenied) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("請到「設定 → NerLan」開啟麥克風權限，才能錄下你的朗讀。")
+        }
         // Apply a pending mode switch when its translation job finishes, or surface
         // the failure.
         .onChange(of: translationJob) { _, state in
@@ -121,8 +220,17 @@ struct TranscriptView: View {
         // Keep the screen awake while the transcript is on screen (player caption
         // mode, the standalone sheet, or the iPad panel) so it doesn't sleep
         // mid-read. Restored as soon as the view goes away.
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            if startShadowing && shadowingAvailable && !shadowing { toggleShadowing() }
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            if shadowing {
+                PlayerManager.shared.clearLoop()
+                recorder.reset()
+            }
+        }
     }
 
     private var transcriptList: some View {
@@ -131,12 +239,30 @@ struct TranscriptView: View {
                 row(line)
             }
             .listStyle(.plain)
+            .safeAreaInset(edge: .bottom) {
+                if shadowing { shadowControlBar }
+            }
             .onChange(of: activeLine) { _, idx in
-                guard let idx else { return }
+                guard !shadowing, let idx else { return }
                 withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(idx, anchor: .center) }
+            }
+            .onChange(of: shadowIndex) { _, idx in
+                guard shadowing, let idx else { return }
+                withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(idx, anchor: .center) }
+            }
+            .onChange(of: loopCount) { _, _ in
+                if shadowing { loopSentence(shadowIndex) }
             }
         }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if shadowingAvailable {
+                    Button { toggleShadowing() } label: {
+                        Image(systemName: shadowing ? "repeat.circle.fill" : "repeat.circle")
+                            .foregroundStyle(shadowing ? Color.accentColor : Color.secondary)
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     fontScale = (fontScale + 1) % 3
@@ -170,11 +296,16 @@ struct TranscriptView: View {
         .onReceive(PlayerManager.shared.$current) { _ in
             updateActiveLine(PlayerManager.shared.clock.currentTime)
         }
+        // `dropFirst` skips the value delivered at subscription, so only a real
+        // finite-loop completion (not entering the view) triggers auto-record.
+        .onReceive(PlayerManager.shared.$loopFinishedSignal.dropFirst()) { _ in
+            Task { await autoStartRecord() }
+        }
     }
 
     @ViewBuilder
     private func row(_ line: Line) -> some View {
-        let active = (line.id == activeLine)
+        let active = (line.id == highlightIndex)
         let translated = translationText(for: line)
         // In translation-only mode, fall back to the original when a line has no
         // translation, so the row is never blank.
@@ -198,6 +329,9 @@ struct TranscriptView: View {
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
         .listRowBackground(active ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
+        .onTapGesture {
+            if shadowing { loopSentence(line.id) }
+        }
         .contextMenu {
             Button {
                 UIPasteboard.general.string = line.text
@@ -211,7 +345,72 @@ struct TranscriptView: View {
                     Label("從這裡播放", systemImage: "play.circle")
                 }
             }
+            if shadowingAvailable {
+                Button {
+                    if !shadowing { shadowing = true }
+                    loopSentence(line.id)
+                } label: {
+                    Label("重複這句", systemImage: "repeat")
+                }
+            }
         }
+    }
+
+    /// Sentence-grained transport shown at the bottom while shadowing: step
+    /// between sentences and replay the current one (left), record your read and
+    /// play it back (middle), and pick the repeat count (right).
+    private var shadowControlBar: some View {
+        let count = cues?.count ?? 0
+        let i = shadowIndex
+        let key = recordKey(i ?? -1)
+        return HStack(spacing: 18) {
+            Button { loopSentence((i ?? 0) - 1) } label: {
+                Image(systemName: "backward.end.fill")
+            }
+            .disabled((i ?? 0) <= 0)
+
+            Button { loopSentence(i ?? activeLine ?? 0) } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+
+            Button { loopSentence((i ?? -1) + 1) } label: {
+                Image(systemName: "forward.end.fill")
+            }
+            .disabled(i == nil || (i! + 1) >= count)
+
+            Spacer()
+
+            // Record your read, then play it back to compare with the original.
+            Button { Task { await toggleRecord() } } label: {
+                Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                    .foregroundStyle(recorder.isRecording ? Color.red : Color.accentColor)
+            }
+            .disabled(i == nil)
+
+            Button { togglePlayMine() } label: {
+                Image(systemName: recorder.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+            }
+            .disabled(i == nil || !recorder.hasRecording(for: key))
+
+            Spacer()
+
+            Menu {
+                Picker("重複次數", selection: $loopCount) {
+                    Text("1 次").tag(1)
+                    Text("2 次").tag(2)
+                    Text("3 次").tag(3)
+                    Text("5 次").tag(5)
+                    Text("無限").tag(0)
+                }
+            } label: {
+                Label(loopCountLabel, systemImage: "repeat")
+                    .font(.subheadline)
+            }
+        }
+        .font(.title2)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     /// The translation for a line, when one is loaded and aligned.

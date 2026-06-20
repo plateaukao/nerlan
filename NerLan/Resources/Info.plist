@@ -33,6 +33,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>NerLan 會在區域網路上搜尋你的 whisperASR 轉錄伺服器，方便自動填入伺服器網址。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NerLan 會錄下你朗讀的聲音，讓你和原音對照練習跟讀。</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.danielkao.NerLan</key>

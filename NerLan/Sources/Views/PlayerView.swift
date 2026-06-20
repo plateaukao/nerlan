@@ -27,6 +27,9 @@ struct PlayerView: View {
     /// timestamp cues; reset per-episode so each starts on the cover.
     @State private var captionMode = false
     @State private var captionCues: [TranscriptCue]?
+    /// iPhone presentation of the 跟讀 transcript (iPad uses the StudyPanel side
+    /// panel instead). Opens the same view as the 逐字稿 button, already shadowing.
+    @State private var showShadowSheet = false
 
     /// Whether the caption toggle should appear: a cued transcript exists.
     private var captionsAvailable: Bool { !(captionCues?.isEmpty ?? true) }
@@ -222,6 +225,21 @@ struct PlayerView: View {
                             .foregroundStyle(captionMode ? Color.accentColor : Color.primary)
                         }
                         .buttonStyle(.borderless)
+
+                        // 跟讀: open the transcript view (sheet on iPhone, side panel
+                        // on iPad) already in shadowing mode — same surface as 逐字稿,
+                        // not the in-player caption overlay.
+                        Button {
+                            openShadow(record)
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: "repeat.circle")
+                                    .font(.title3)
+                                Text("跟讀").font(.caption2)
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.borderless)
                     }
                     AIActionButton(kind: .transcript, record: record)
                     AIActionButton(kind: .handout, record: record)
@@ -241,6 +259,27 @@ struct PlayerView: View {
                                onClose: { showAttachment = false })
                     .appEnvironment()
             }
+        }
+        .sheet(isPresented: $showShadowSheet) {
+            if let record = player.current {
+                TranscriptView(record: record,
+                               text: ai.transcriptText(record.id) ?? "",
+                               cues: ai.transcriptCues(record.id),
+                               startShadowing: true,
+                               onClose: { showShadowSheet = false })
+                    .appEnvironment()
+            }
+        }
+    }
+
+    /// Open the transcript already shadowing: iPad shows it in the StudyPanel side
+    /// panel (and closes the player); iPhone presents it as a sheet.
+    private func openShadow(_ record: EpisodeRecord) {
+        if StudyPanel.usesSidePanel {
+            study.item = .shadow(record)
+            dismiss()
+        } else {
+            showShadowSheet = true
         }
     }
 

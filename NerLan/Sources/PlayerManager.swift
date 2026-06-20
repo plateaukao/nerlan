@@ -56,9 +56,24 @@ final class PlayerManager: ObservableObject {
         }
     }
 
+    /// The `[start, end)` region currently looping for shadowing, or nil. Set and
+    /// cleared via `loopSegment`/`clearLoop`; published so the UI can reflect that
+    /// a sentence loop is active. Changes only when a loop is armed/cleared, not on
+    /// each loop pass, so it doesn't add per-tick re-renders.
+    @Published private(set) var loopRegion: ClosedRange<Double>?
+
+    /// Bumped when a finite sentence loop finishes its last pass. The shadowing UI
+    /// observes this to auto-start recording the learner's repeat.
+    @Published private(set) var loopFinishedSignal = 0
+
     private let player = AVPlayer()
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    /// Fires when playback crosses the loop region's end. Tied to the player (not
+    /// the item), so it survives `replaceCurrentItem` and is removed explicitly.
+    private var boundaryObserver: Any?
+    /// Remaining passes for a finite loop; nil while looping forever.
+    private var loopRemaining: Int?
     /// Wall-clock timestamp of the last playback tick, used to accumulate real
     /// time spent listening (independent of playback rate). Nil while paused/idle;
     /// gaps larger than a few seconds (pause, seek, backgrounding) are discarded.
@@ -126,6 +141,7 @@ final class PlayerManager: ObservableObject {
         cachingEpisodeId = nil
         cachingAudioExt = nil
         lastTick = nil   // don't count the gap across an episode change
+        clearLoop()      // a sentence loop never carries across episodes
 
         // Prefer an offline copy — an explicit download first, then a streamed
         // cache copy — and only then stream from the network.
@@ -211,6 +227,101 @@ final class PlayerManager: ObservableObject {
 
     func skip(_ delta: Double) {
         seek(to: max(0, min(clock.currentTime + delta, clock.duration > 0 ? clock.duration : .greatestFiniteMagnitude)))
+    }
+
+    // MARK: - Segment loop (shadowing)
+
+    /// Trimmed off a segment's start so a Whisper cue boundary doesn't clip the
+    /// first syllable when a sentence is looped.
+    private static let loopLeadIn: Double = 0.2
+
+    /// Loop a single `[start, end)` region — the core of shadowing's sentence
+    /// repeat. `times == nil` loops forever; a finite count plays the segment that
+    /// many times, then clears the loop so normal sequential playback resumes (no
+    /// inserted gap). Replaces any region already looping. The end is matched with
+    /// a boundary time observer, which is exact — the 0.5s periodic observer would
+    /// overshoot by up to half a second.
+    func loopSegment(start: Double, end: Double, times: Int? = nil) {
+        let from = max(0, start - Self.loopLeadIn)
+        guard end > from else { return }
+        removeBoundaryObserver()
+        loopRegion = from...end
+        loopRemaining = times
+        boundaryObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: CMTime(seconds: end, preferredTimescale: 600))],
+            queue: .main
+        ) { [weak self] in
+            Task { @MainActor [weak self] in self?.loopBoundaryReached(from: from) }
+        }
+        seek(to: from)
+        if !isPlaying {
+            try? AVAudioSession.sharedInstance().setActive(true)
+            player.play()
+            isPlaying = true
+            lastTick = Date()
+            updateNowPlayingElapsed()
+        }
+    }
+
+    private func loopBoundaryReached(from: Double) {
+        guard loopRegion != nil else { return }
+        if let remaining = loopRemaining {
+            if remaining > 1 {
+                loopRemaining = remaining - 1
+                seek(to: from)
+            } else {
+                // Finite count done: stop on the sentence and signal the shadowing
+                // UI, which auto-starts recording the learner's turn.
+                clearLoop()
+                pause()
+                loopFinishedSignal += 1
+            }
+        } else {
+            seek(to: from)
+        }
+    }
+
+    /// Pause playback without touching the queue or loop. Used when the recorder
+    /// takes the mic, when the learner plays back their own voice, and when a
+    /// finite sentence loop finishes.
+    func pause() {
+        guard isPlaying else { return }
+        player.pause()
+        isPlaying = false
+        lastTick = nil
+        ListeningStatsStore.shared.flush()
+        updateNowPlayingElapsed()
+    }
+
+    /// Hand the audio session to the recorder: drop any loop, pause, and switch to
+    /// play-and-record so the mic is live. Paired with `endRecordingSession`.
+    func beginRecordingSession() {
+        clearLoop()
+        pause()
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playAndRecord, mode: .spokenAudio,
+                                 options: [.defaultToSpeaker, .allowBluetooth])
+        try? session.setActive(true)
+    }
+
+    /// Restore the normal playback session after recording. Leaves playback paused
+    /// — the learner decides whether to replay the original or their own take.
+    func endRecordingSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .spokenAudio)
+        try? session.setActive(true)
+    }
+
+    /// Stop any active segment loop; playback continues from wherever it is.
+    func clearLoop() {
+        removeBoundaryObserver()
+        loopRegion = nil
+        loopRemaining = nil
+    }
+
+    private func removeBoundaryObserver() {
+        if let boundaryObserver { player.removeTimeObserver(boundaryObserver) }
+        boundaryObserver = nil
     }
 
     // MARK: - Lock screen / control center

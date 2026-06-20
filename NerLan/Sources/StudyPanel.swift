@@ -13,6 +13,7 @@ final class StudyPanel: ObservableObject {
 
     enum Item: Equatable {
         case transcript(EpisodeRecord)
+        case shadow(EpisodeRecord)   // transcript opened straight into shadowing
         case handout(EpisodeRecord)
         case attachment(EpisodeRecord)
     }

@@ -35,6 +35,10 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
+        # Shadowing practice records the learner reading a sentence aloud so they
+        # can play it back against the original; required before AVAudioRecorder
+        # can start.
+        NSMicrophoneUsageDescription: NerLan 會錄下你朗讀的聲音，讓你和原音對照練習跟讀。
         # iPhone rotates to landscape too: the player sheet drops its cover/header
         # in compact height (PlayerView) so the controls still fit. (No upside-down
         # on iPhone, per convention.)
