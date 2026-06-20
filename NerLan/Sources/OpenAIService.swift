@@ -231,6 +231,8 @@ enum OpenAIService {
             sample = "Contoh bahasa Indonesia: Selamat pagi. Apa kabar? Terima kasih banyak."
         } else if language.contains("泰") {
             sample = "ตัวอย่างภาษาไทย: สวัสดีครับ สบายดีไหม ขอบคุณมากครับ"
+        } else if language.contains("阿拉伯") {
+            sample = "阿拉伯語例句：صباح الخير. كيف حالك؟ شكرا جزيلا. سأبقى هنا حتى يوم الجمعة."
         } else {
             return base + "節目中會穿插「\(language)」教學，請保留該語言文字的原始樣貌。"
         }
