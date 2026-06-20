@@ -18,11 +18,28 @@ set -euo pipefail
 #
 # Without those it stops after producing the .ipa and prints how to upload it
 # (Transporter.app, or the altool command shown).
+#
+# SIGNING: exports with MANUAL signing using a local "Apple Distribution"
+# certificate and the "$PROFILE_NAME" App Store provisioning profile (below).
+# We do NOT use automatic/cloud signing: this account's App Store Connect API
+# key has App Manager role, which Apple does not let mint a cloud-managed
+# distribution certificate, so automatic export fails with
+# "Cloud signing permission error". Prerequisites that must already exist:
+#   - an "Apple Distribution: ... (3WD42GF27D)" identity in the login keychain
+#     (security find-identity -v -p codesigning), and
+#   - the "$PROFILE_NAME" profile in ~/Library/MobileDevice/Provisioning Profiles
+#     bundling that cert with bundle id $BUNDLE_ID.
+# Both were created via the App Store Connect API on 2026-06-20; the cert is
+# valid until 2027-06-20. If they're missing/expired, recreate a distribution
+# cert + IOS_APP_STORE profile (e.g. via Xcode > Manage Certificates, or the
+# /v1/certificates and /v1/profiles API) before running this.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 APP_NAME="NerLan"
 TEAM_ID="3WD42GF27D"
+BUNDLE_ID="com.danielkao.NerLan"
+PROFILE_NAME="NerLan App Store"
 BUILD_DIR="$PROJECT_DIR/.build"
 ARCHIVE_PATH="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/testflight"
@@ -48,7 +65,7 @@ if [[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -n "${ASC_KEY_PATH:-}" 
     UPLOAD=true
 fi
 
-echo "==> Writing export options (App Store distribution, automatic signing)..."
+echo "==> Writing export options (App Store distribution, manual signing)..."
 mkdir -p "$BUILD_DIR"
 {
   echo '<?xml version="1.0" encoding="UTF-8"?>'
@@ -60,7 +77,14 @@ mkdir -p "$BUILD_DIR"
   echo '    <key>teamID</key>'
   echo "    <string>$TEAM_ID</string>"
   echo '    <key>signingStyle</key>'
-  echo '    <string>automatic</string>'
+  echo '    <string>manual</string>'
+  echo '    <key>signingCertificate</key>'
+  echo '    <string>Apple Distribution</string>'
+  echo '    <key>provisioningProfiles</key>'
+  echo '    <dict>'
+  echo "        <key>$BUNDLE_ID</key>"
+  echo "        <string>$PROFILE_NAME</string>"
+  echo '    </dict>'
   if [[ "$UPLOAD" == true ]]; then
     echo '    <key>destination</key>'
     echo '    <string>upload</string>'
@@ -77,7 +101,6 @@ if [[ "$UPLOAD" == true ]]; then
         -archivePath "$ARCHIVE_PATH" \
         -exportPath "$EXPORT_DIR" \
         -exportOptionsPlist "$EXPORT_OPTIONS" \
-        -allowProvisioningUpdates \
         -authenticationKeyPath "$ASC_KEY_PATH" \
         -authenticationKeyID "$ASC_KEY_ID" \
         -authenticationKeyIssuerID "$ASC_ISSUER_ID"
@@ -89,8 +112,7 @@ else
     xcodebuild -exportArchive \
         -archivePath "$ARCHIVE_PATH" \
         -exportPath "$EXPORT_DIR" \
-        -exportOptionsPlist "$EXPORT_OPTIONS" \
-        -allowProvisioningUpdates
+        -exportOptionsPlist "$EXPORT_OPTIONS"
     echo ""
     echo "==> Exported (NOT uploaded): $EXPORT_DIR/$APP_NAME.ipa"
     echo "    To upload, either:"
