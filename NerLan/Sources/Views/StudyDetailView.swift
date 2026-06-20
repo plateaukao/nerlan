@@ -18,6 +18,13 @@ struct StudyDetailView: View {
                                cues: ai.transcriptCues(record.id),
                                onClose: { study.clear() })
                     .id("transcript-\(record.id)")
+            case .shadow(let record):
+                TranscriptView(record: record,
+                               text: ai.transcriptText(record.id) ?? "",
+                               cues: ai.transcriptCues(record.id),
+                               startShadowing: true,
+                               onClose: { study.clear() })
+                    .id("shadow-\(record.id)")
             case .handout(let record):
                 HandoutView(html: ai.handoutHTML(record.id) ?? "",
                             onClose: { study.clear() })

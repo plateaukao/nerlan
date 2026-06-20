@@ -7,7 +7,25 @@ struct NerLanApp: App {
             ContentView()
                 .appEnvironment()
         }
+        #if targetEnvironment(macCatalyst)
+        // On Mac, surface Settings as the standard app-menu item (⌘,) rather than a
+        // toolbar gear (hidden on Catalyst). The command signals ProgramListView,
+        // which owns the Settings sheet.
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("設定…") {
+                    NotificationCenter.default.post(name: .openSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
+        #endif
     }
+}
+
+extension Notification.Name {
+    /// Posted by the Mac "設定…" menu command; observed by ProgramListView.
+    static let openSettings = Notification.Name("com.danielkao.NerLan.openSettings")
 }
 
 extension View {

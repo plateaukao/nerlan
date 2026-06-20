@@ -48,18 +48,24 @@ struct ProgramListView: View {
                             .padding(10)
                             .contentShape(Rectangle())
                     }
+                    // On Mac the gear is replaced by the app-menu 設定… item (⌘,).
+                    #if !targetEnvironment(macCatalyst)
                     Button { showSettings = true } label: {
                         Image(systemName: "gear")
                             .font(.title3)
                             .padding(10)
                             .contentShape(Rectangle())
                     }
+                    #endif
                 }
                 .padding(.trailing, 6)
                 .padding(.top, 6)
             }
             .sheet(isPresented: $showSettings) { SettingsView().appEnvironment() }
             .sheet(isPresented: $showAddPodcast) { AddPodcastView().appEnvironment() }
+            .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+                showSettings = true
+            }
         }
     }
 
