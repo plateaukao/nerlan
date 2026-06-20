@@ -16,8 +16,9 @@ import UIKit
 /// translate button loops the view through three modes — original, original plus
 /// per-sentence translation, and translation only — translating into the target
 /// language set in Settings. The translation is generated on demand, cached, and
-/// mirrored to iCloud by `AIContentStore`. Translate-mode resets to original each
-/// time a transcript opens, so opening one never silently starts a paid job.
+/// mirrored to iCloud by `AIContentStore`. Translate-mode is remembered across
+/// screens; on open it's reapplied only when a matching translation is already
+/// cached, so opening one never silently starts a paid job.
 ///
 /// Uses `List` (UITableView-backed, with cell reuse) with plain `Text` rows.
 /// `.textSelection` is deliberately NOT used per row — it makes every reused
@@ -46,8 +47,13 @@ struct TranscriptView: View {
     @AppStorage("transcriptFontScale") private var fontScale = 0
 
     /// View mode: 0 = original, 1 = original + translation, 2 = translation only.
-    /// Resets to 0 each time a transcript opens.
+    /// On open it's restored from `translatePreference` only when a matching
+    /// translation is already cached (see `restoreTranslatePreference`).
     @State private var translateMode = 0
+    /// Remembered view-mode preference across transcript screens. Drives the mode
+    /// on open, but only takes effect when the cached translation exists — opening
+    /// never triggers a (paid) translation.
+    @AppStorage("transcriptTranslateMode") private var translatePreference = 0
     /// The mode to switch to once an in-flight translation finishes.
     @State private var pendingMode: Int?
     /// Translation aligned to the display sentences, for the current target
@@ -228,6 +234,7 @@ struct TranscriptView: View {
         // mid-read. Restored as soon as the view goes away.
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
+            restoreTranslatePreference()
             if startShadowing && shadowingAvailable && !shadowing { toggleShadowing() }
         }
         .onDisappear {
@@ -442,11 +449,13 @@ struct TranscriptView: View {
         let next = (translateMode + 1) % 3
         if next == 0 {
             translateMode = 0
+            translatePreference = 0
             return
         }
         if let stored = ai.translation(episodeId), stored.language == settings.translationLanguage {
             translation = stored.sentences
             translateMode = next
+            translatePreference = next
             return
         }
         guard settings.hasAPIKey else {
@@ -458,6 +467,20 @@ struct TranscriptView: View {
         ai.translate(record)
     }
 
+    /// On open, apply the remembered view-mode preference only if a matching
+    /// translation is already cached; otherwise stay on the original. Never starts
+    /// a translation job.
+    private func restoreTranslatePreference() {
+        if translatePreference != 0,
+           let stored = ai.translation(episodeId),
+           stored.language == settings.translationLanguage {
+            translation = stored.sentences
+            translateMode = translatePreference
+        } else {
+            translateMode = 0
+        }
+    }
+
     private func handleTranslationJobChange(_ state: AIContentStore.JobState?) {
         switch state {
         case .none:
@@ -466,6 +489,7 @@ struct TranscriptView: View {
             if let stored = ai.translation(episodeId), stored.language == settings.translationLanguage {
                 translation = stored.sentences
                 translateMode = pending
+                translatePreference = pending
             }
             pendingMode = nil
         case .failed(let message):
