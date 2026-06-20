@@ -4,7 +4,7 @@ import UIKit
 
 /// Read-only transcript viewer shown in a sheet over the player. The stored
 /// transcript has one sentence per line (segmented by the chat model), rendered
-/// here as a numbered, sentence-by-sentence study list.
+/// here as a sentence-by-sentence study list.
 ///
 /// When the transcript was produced with timestamps (`cues`) *and* it belongs to
 /// the episode currently playing, the sentence being spoken is highlighted and
@@ -179,25 +179,19 @@ struct TranscriptView: View {
         // In translation-only mode, fall back to the original when a line has no
         // translation, so the row is never blank.
         let showOriginal = translateMode != 2 || (translated?.isEmpty ?? true)
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("\(line.id + 1)")
-                .font(.system(size: max(11, bodyFontSize * 0.68)).monospacedDigit())
-                .foregroundStyle(active ? Color.accentColor : .secondary)
-                .frame(minWidth: 26, alignment: .trailing)
-            VStack(alignment: .leading, spacing: 4) {
-                if showOriginal {
-                    Text(line.text)
-                        .font(.system(size: bodyFontSize))
-                        .fontWeight(active ? .semibold : .regular)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if translateMode != 0, let translated, !translated.isEmpty {
-                    Text(translated)
-                        .font(.system(size: translateMode == 2 ? bodyFontSize : bodyFontSize - 2))
-                        .fontWeight(active && translateMode == 2 ? .semibold : .regular)
-                        .foregroundStyle(translateMode == 2 ? Color.primary : Color.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            if showOriginal {
+                Text(line.text)
+                    .font(.system(size: bodyFontSize))
+                    .fontWeight(active ? .semibold : .regular)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if translateMode != 0, let translated, !translated.isEmpty {
+                Text(translated)
+                    .font(.system(size: translateMode == 2 ? bodyFontSize : bodyFontSize - 2))
+                    .fontWeight(active && translateMode == 2 ? .semibold : .regular)
+                    .foregroundStyle(translateMode == 2 ? Color.primary : Color.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, 4)
