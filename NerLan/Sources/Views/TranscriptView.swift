@@ -76,6 +76,9 @@ struct TranscriptView: View {
     /// play it back against the original.
     @ObservedObject private var recorder = ShadowRecorder.shared
     @State private var showMicDenied = false
+    /// Whether a segment is currently repeating, mirrored from `PlayerManager`. The
+    /// replay button becomes a pause while this is true so the loop can be stopped.
+    @State private var isLooping = false
 
     private var episodeId: String { record.id }
 
@@ -124,8 +127,11 @@ struct TranscriptView: View {
     }
 
     /// Arm the loop on sentence `index` and remember it as the shadow target.
+    /// Stops any in-progress recording / playback first, so stepping to another
+    /// sentence (or replaying) interrupts a take and plays the segment.
     private func loopSentence(_ index: Int?) {
         guard let index, let r = region(for: index) else { return }
+        recorder.reset()
         shadowIndex = index
         PlayerManager.shared.loopSegment(start: r.start, end: r.end,
                                          times: loopCount == 0 ? nil : loopCount)
@@ -298,6 +304,7 @@ struct TranscriptView: View {
         }
         // `dropFirst` skips the value delivered at subscription, so only a real
         // finite-loop completion (not entering the view) triggers auto-record.
+        .onReceive(PlayerManager.shared.$loopRegion) { isLooping = ($0 != nil) }
         .onReceive(PlayerManager.shared.$loopFinishedSignal.dropFirst()) { _ in
             Task { await autoStartRecord() }
         }
@@ -369,8 +376,15 @@ struct TranscriptView: View {
             }
             .disabled((i ?? 0) <= 0)
 
-            Button { loopSentence(i ?? activeLine ?? 0) } label: {
-                Image(systemName: "arrow.counterclockwise")
+            Button {
+                if isLooping {
+                    PlayerManager.shared.clearLoop()
+                    PlayerManager.shared.pause()
+                } else {
+                    loopSentence(i ?? activeLine ?? 0)
+                }
+            } label: {
+                Image(systemName: isLooping ? "pause.circle.fill" : "arrow.counterclockwise")
             }
 
             Button { loopSentence((i ?? -1) + 1) } label: {

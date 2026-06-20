@@ -231,10 +231,6 @@ final class PlayerManager: ObservableObject {
 
     // MARK: - Segment loop (shadowing)
 
-    /// Trimmed off a segment's start so a Whisper cue boundary doesn't clip the
-    /// first syllable when a sentence is looped.
-    private static let loopLeadIn: Double = 0.2
-
     /// Loop a single `[start, end)` region — the core of shadowing's sentence
     /// repeat. `times == nil` loops forever; a finite count plays the segment that
     /// many times, then clears the loop so normal sequential playback resumes (no
@@ -242,7 +238,7 @@ final class PlayerManager: ObservableObject {
     /// a boundary time observer, which is exact — the 0.5s periodic observer would
     /// overshoot by up to half a second.
     func loopSegment(start: Double, end: Double, times: Int? = nil) {
-        let from = max(0, start - Self.loopLeadIn)
+        let from = max(0, start)
         guard end > from else { return }
         removeBoundaryObserver()
         loopRegion = from...end
