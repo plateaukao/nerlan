@@ -9,6 +9,10 @@ struct PlayerView: View {
     @EnvironmentObject var study: StudyPanel
     @EnvironmentObject var ai: AIContentStore
     @Environment(\.dismiss) private var dismiss
+    /// A compact vertical size class means a phone in landscape: the sheet is then
+    /// too short for the cover + header, so they (and the caption toggle) are dropped
+    /// so the transport and action rows still fit. Portrait and iPad are unchanged.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     /// The scrubber needs the high-frequency playback position; observe the clock
     /// directly so only this sheet re-renders on each tick.
@@ -47,7 +51,11 @@ struct PlayerView: View {
                 .frame(width: 36, height: 5)
                 .padding(.top, 8)
 
-            let showCaptions = captionMode && captionsAvailable
+            let compactHeight = verticalSizeClass == .compact
+            // Caption mode swaps the cover area for the synced transcript; with the
+            // header hidden in phone landscape there's nowhere for it to live, so
+            // disable it (and hide its toggle below) when compact.
+            let showCaptions = captionMode && captionsAvailable && !compactHeight
             if showCaptions, let record = player.current {
                 // Take over the cover/title/program/language area with the synced
                 // transcript; its 關閉 button (or the 字幕 toggle) exits caption mode.
@@ -59,21 +67,26 @@ struct PlayerView: View {
             } else {
                 Spacer()
 
-                CoverImage(urlString: player.current?.coverURL, size: 240)
-                    .shadow(radius: 8)
+                // In phone landscape the sheet is too short for the cover + header,
+                // so drop them; the controls then fit without scrolling. The leading
+                // and trailing Spacers keep the controls centered.
+                if !compactHeight {
+                    CoverImage(urlString: player.current?.coverURL, size: 240)
+                        .shadow(radius: 8)
 
-                VStack(spacing: 6) {
-                    Text(player.current?.title ?? "")
-                        .font(.title3.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                    Text(player.current?.programName ?? "")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(player.current?.language ?? "")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    VStack(spacing: 6) {
+                        Text(player.current?.title ?? "")
+                            .font(.title3.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                        Text(player.current?.programName ?? "")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text(player.current?.language ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
             }
 
             // Scrubber
@@ -195,8 +208,9 @@ struct PlayerView: View {
             if let record = player.current, settings.hasAPIKey {
                 HStack(spacing: 44) {
                     // Caption toggle: only when the transcript carries timestamps,
-                    // so the follow-along has cues to highlight/scroll.
-                    if captionsAvailable {
+                    // so the follow-along has cues to highlight/scroll. Hidden in
+                    // phone landscape (compact), where caption mode is disabled.
+                    if captionsAvailable && !compactHeight {
                         Button {
                             captionMode.toggle()
                         } label: {
@@ -215,7 +229,7 @@ struct PlayerView: View {
                 .foregroundStyle(.primary)
             }
 
-            if !(captionMode && captionsAvailable) { Spacer() }
+            if !showCaptions { Spacer() }
         }
         .presentationDetents([.large])
         .onAppear { refreshCaptionCues() }

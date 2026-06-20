@@ -35,9 +35,14 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        # iPad supports all orientations so the two-pane split reads well in
-        # landscape; iPhone stays portrait-only (above).
+        # iPhone rotates to landscape too: the player sheet drops its cover/header
+        # in compact height (PlayerView) so the controls still fit. (No upside-down
+        # on iPhone, per convention.)
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # iPad adds upside-down so the two-pane split reads well in every orientation.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
