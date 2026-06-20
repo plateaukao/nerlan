@@ -80,6 +80,11 @@ targets:
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 3WD42GF27D
+        # Mac Catalyst runs under the hardened runtime, which blocks the microphone
+        # unless com.apple.security.device.audio-input is granted. That key is
+        # macOS-only, so the Catalyst build uses its own entitlements file; iOS
+        # keeps the generated NerLan.entitlements.
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": NerLan/Resources/NerLan-macOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
         # Mac Catalyst: build a native macOS app from the same source. Keep the
