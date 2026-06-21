@@ -449,6 +449,29 @@ final class AIContentStore: ObservableObject {
     /// so a long episode is split into digestible Part I/II/III sections.
     private static let handoutPartSeconds = 900
 
+    /// A final part shorter than this (10 min) is considered a stub: the last two
+    /// parts are merged and re-split evenly so the episode doesn't end on a sliver.
+    private static let handoutMinTailSeconds = 600
+
+    /// Cut points (in seconds) for a `duration`-second episode's handout parts:
+    /// `[0, b1, …, duration]`, so part `i` spans `bounds[i]…bounds[i+1]`. Parts cap
+    /// at ~15 min, but when the final part would run shorter than 10 min the last
+    /// two parts merge and re-split evenly — e.g. 35 min yields `[0, 900, 1500,
+    /// 2100]` (0–15, 15–25, 25–35) rather than `[0, 900, 1800, 2100]` (0–15, 15–30,
+    /// 30–35). The single source of truth for both `handoutSegments` and
+    /// `partTitle`, so the text split and the time labels always agree.
+    static func handoutPartBoundaries(duration: Int) -> [Int] {
+        let parts = max(1, Int((Double(duration) / Double(handoutPartSeconds)).rounded(.up)))
+        guard parts > 1 else { return [0, duration] }
+        var bounds = (0..<parts).map { $0 * handoutPartSeconds } + [duration]
+        // bounds[parts] == duration; the last part spans bounds[parts-1]…duration.
+        if duration - bounds[parts - 1] < handoutMinTailSeconds {
+            let mergedStart = bounds[parts - 2]
+            bounds[parts - 1] = mergedStart + (duration - mergedStart) / 2
+        }
+        return bounds
+    }
+
     private func runHandout(_ record: EpisodeRecord) async {
         let k = key(.handout, record.id)
         let settings = SettingsStore.shared
@@ -518,31 +541,41 @@ final class AIContentStore: ObservableObject {
 
     /// Split the transcript into one segment per ~15-minute part. Returns a single
     /// segment when the episode is ≤15 min (or its length is unknown and the
-    /// transcript is short). Segments are balanced by character count and broken
-    /// only at line (sentence) boundaries, since the transcript is one sentence
-    /// per line.
+    /// transcript is short). When the duration is known each part's text is sized
+    /// in proportion to its `handoutPartBoundaries` time span (assuming a roughly
+    /// constant speaking rate), so the segments line up with the Part I/II/III time
+    /// labels; with an unknown duration they fall back to equal character counts.
+    /// Breaks land only at line (sentence) boundaries, since the transcript is one
+    /// sentence per line.
     static func handoutSegments(_ transcript: String, durationSeconds: Int?) -> [String] {
-        let parts: Int
+        let total = transcript.count
+        // Cumulative character counts at which to cut, one per internal boundary.
+        let cutAt: [Int]
         if let dur = durationSeconds, dur > 0 {
-            parts = max(1, Int((Double(dur) / Double(handoutPartSeconds)).rounded(.up)))
+            let bounds = handoutPartBoundaries(duration: dur)
+            guard bounds.count > 2 else { return [transcript] }   // single part
+            cutAt = bounds.dropFirst().dropLast().map {
+                Int((Double(total) * Double($0) / Double(dur)).rounded())
+            }
         } else {
-            // Unknown duration: ~3500 chars ≈ 15 min of speech.
-            parts = max(1, Int((Double(transcript.count) / 3500.0).rounded(.up)))
+            // Unknown duration: ~3500 chars ≈ 15 min of speech, split evenly.
+            let parts = max(1, Int((Double(total) / 3500.0).rounded(.up)))
+            guard parts > 1 else { return [transcript] }
+            cutAt = (1..<parts).map { total * $0 / parts }
         }
-        guard parts > 1 else { return [transcript] }
 
         let lines = transcript.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let target = max(1, transcript.count / parts)
         var segments: [String] = []
         var current: [String] = []
-        var currentChars = 0
+        var cumChars = 0
+        var next = 0
         for line in lines {
             current.append(line)
-            currentChars += line.count + 1
-            if currentChars >= target, segments.count < parts - 1 {
+            cumChars += line.count + 1
+            if next < cutAt.count, cumChars >= cutAt[next] {
                 segments.append(current.joined(separator: "\n"))
                 current = []
-                currentChars = 0
+                next += 1
             }
         }
         if !current.isEmpty { segments.append(current.joined(separator: "\n")) }
@@ -604,13 +637,14 @@ final class AIContentStore: ObservableObject {
     }
 
     /// "Part I（00:00–15:00）" — Roman numeral plus the part's audio time range
-    /// (range omitted when the duration is unknown).
+    /// (range omitted when the duration is unknown). The range comes from
+    /// `handoutPartBoundaries`, the same cut points `handoutSegments` splits on.
     static func partTitle(index: Int, total: Int, duration: Int?) -> String {
         let label = "Part \(romanNumeral(index + 1))"
         guard let duration, duration > 0 else { return label }
-        let start = index * handoutPartSeconds
-        let end = (index == total - 1) ? duration : (index + 1) * handoutPartSeconds
-        return "\(label)（\(timeStamp(start))–\(timeStamp(end))）"
+        let bounds = handoutPartBoundaries(duration: duration)
+        guard index + 1 < bounds.count else { return label }
+        return "\(label)（\(timeStamp(bounds[index]))–\(timeStamp(bounds[index + 1]))）"
     }
 
     private static func timeStamp(_ seconds: Int) -> String {
