@@ -19,6 +19,13 @@ enum OpenAIService {
         let apiKey: String
         let model: String
         var requiresKey: Bool = true
+        /// When true, chat requests send `reasoning_effort: "none"` to turn off
+        /// "thinking". Local Ollama auto-enables thinking for capable models
+        /// (qwen3, deepseek-r1, gpt-oss, …), which both slows generation and leaks
+        /// reasoning into the output (e.g. handout HTML); "none" is the only switch
+        /// the OpenAI-compatible `/chat/completions` endpoint honors (the native
+        /// `think: false` is ignored there). Off for the official OpenAI provider.
+        var disableThinking: Bool = false
     }
 
     /// Transcribing a ~30-min episode (and generating a handout from a long
@@ -376,6 +383,10 @@ enum OpenAIService {
             ],
         ]
         if let temperature { payload["temperature"] = temperature }
+        // Ollama (and other thinking-capable servers) leave reasoning on unless
+        // told otherwise; "none" disables it. Harmless to OpenAI-compatible
+        // servers that ignore the field; only sent when the user opts in.
+        if config.disableThinking { payload["reasoning_effort"] = "none" }
         var req = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
         if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }

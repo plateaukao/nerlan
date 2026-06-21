@@ -216,6 +216,7 @@ struct SettingsView: View {
                         text: $settings.customChatKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            Toggle("停用思考模式（no think）", isOn: $settings.customChatNoThink)
             verifyRow(title: "驗證講義／翻譯伺服器", state: chatProbe) {
                 runProbe(settings.chatConfig,
                          set: { chatProbe = $0 },
@@ -224,11 +225,12 @@ struct SettingsView: View {
         } header: {
             Text("講義／翻譯伺服器")
         } footer: {
-            Text("與 OpenAI 相容的伺服器網址（到 /v1 為止），用於 /chat/completions。講義、翻譯與句子斷句都會使用這個伺服器。")
+            Text("與 OpenAI 相容的伺服器網址（到 /v1 為止），用於 /chat/completions。講義、翻譯與句子斷句都會使用這個伺服器。\n本機 Ollama 的思考模型（qwen3、deepseek-r1 等）預設會輸出思考過程，開啟「停用思考模式」會傳送 reasoning_effort=none 將其關閉。")
         }
         .onChange(of: settings.customChatURL) { chatProbe = .idle }
         .onChange(of: settings.customChatModel) { chatProbe = .idle }
         .onChange(of: settings.customChatKey) { chatProbe = .idle }
+        .onChange(of: settings.customChatNoThink) { chatProbe = .idle }
     }
 
     /// A tappable "verify" row that sends a tiny live request to the server and

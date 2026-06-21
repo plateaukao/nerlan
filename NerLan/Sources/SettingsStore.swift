@@ -44,6 +44,7 @@ final class SettingsStore: ObservableObject {
     private static let customTranscriptionModelKey = "customTranscriptionModel"
     private static let customChatURLKey = "customChatURL"
     private static let customChatModelKey = "customChatModel"
+    private static let customChatNoThinkKey = "customChatNoThink"
     private static let customTranscriptionKeyAccount = "custom-transcription-api-key"
     private static let customChatKeyAccount = "custom-chat-api-key"
     private static let cacheStreamedAudioKey = "cacheStreamedAudio"
@@ -103,6 +104,14 @@ final class SettingsStore: ObservableObject {
 
     @Published var customChatKey: String {
         didSet { Keychain.set(customChatKey, account: Self.customChatKeyAccount) }
+    }
+
+    /// When on, the custom chat server's requests send `reasoning_effort: "none"`
+    /// to disable "thinking" — for local Ollama models (qwen3, deepseek-r1, …)
+    /// that otherwise interleave reasoning into handout/translation output. Off by
+    /// default; only applies to the custom provider. See `OpenAIService.Config`.
+    @Published var customChatNoThink: Bool {
+        didSet { UserDefaults.standard.set(customChatNoThink, forKey: Self.customChatNoThinkKey) }
     }
 
     /// Language the transcript screen's "translate" button renders into.
@@ -184,7 +193,8 @@ final class SettingsStore: ObservableObject {
         case .custom:
             return .init(baseURL: Self.url(customChatURL),
                          apiKey: customKey(customChatKey, url: customChatURL),
-                         model: customChatModel, requiresKey: false)
+                         model: customChatModel, requiresKey: false,
+                         disableThinking: customChatNoThink)
         }
     }
 
@@ -229,6 +239,7 @@ final class SettingsStore: ObservableObject {
             ?? Self.defaultCustomServerURL
         customChatModel = UserDefaults.standard.string(forKey: Self.customChatModelKey) ?? Self.defaultChatModel
         customChatKey = Keychain.get(Self.customChatKeyAccount) ?? ""
+        customChatNoThink = UserDefaults.standard.bool(forKey: Self.customChatNoThinkKey)
         translationLanguage = UserDefaults.standard.string(forKey: Self.translationLanguageKey)
             ?? Self.defaultTranslationLanguage
         cacheStreamedAudio = UserDefaults.standard.bool(forKey: Self.cacheStreamedAudioKey)
