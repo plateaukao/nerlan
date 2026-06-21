@@ -101,12 +101,10 @@ struct TranscriptView: View {
         let start: Double?
     }
 
-    /// Fallback split for transcripts without cues — must match
+    /// Fallback split for transcripts without cues — routed through
     /// `AIContentStore.displaySentences` so row numbering stays consistent.
     private var sentences: [String] {
-        text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        AIContentStore.displaySentences(text)
     }
 
     private var lines: [Line] {

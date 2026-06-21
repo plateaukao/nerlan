@@ -305,8 +305,23 @@ enum OpenAIService {
             // temperature 0: this is a mechanical punctuate-and-split task, so the
             // model must stay faithful and never drift into translating/converting
             // the foreign-language passages.
-            let result = try await chat(system: system, user: piece, config: config, temperature: 0)
-            segments.append(result.trimmingCharacters(in: .whitespacesAndNewlines))
+            //
+            // Retry once on a transient failure, then fall back to the raw piece
+            // rather than throwing: a single hiccup must not collapse this piece
+            // (or, via the caller's raw fallback, the whole ~20-min chunk) into one
+            // unpunctuated run-on line. The keep-raw line still splits on any ASR
+            // punctuation in `displaySentences`.
+            var segmented: String?
+            for attempt in 0..<2 {
+                do {
+                    let result = try await chat(system: system, user: piece, config: config, temperature: 0)
+                    segmented = result.trimmingCharacters(in: .whitespacesAndNewlines)
+                    break
+                } catch {
+                    if attempt == 1 { segmented = piece }
+                }
+            }
+            segments.append(segmented ?? piece)
         }
         return segments.joined(separator: "\n")
     }
