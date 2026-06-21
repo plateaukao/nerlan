@@ -44,6 +44,18 @@ final class AIContentStore: ObservableObject {
     /// target language so a partial for the wrong language is ignored. Cleared on completion.
     @Published private(set) var partialTranslations: [String: StoredTranslation] = [:]
 
+    /// Set when a user-initiated transcript reaches its first chunk (or is already
+    /// saved): a stable presenter — `ContentView` on iPhone, the side panel on
+    /// iPad — opens the viewer and clears this. Lives on the store, not the action
+    /// button, so the auto-open survives the player sheet that started it being
+    /// dismissed (e.g. the user swipes the player away to keep listening while the
+    /// transcript is still chunking). See `transcribeAndOpen`.
+    @Published var presentTranscript: EpisodeRecord?
+
+    /// Episode ids the user asked to view as soon as transcription produces its
+    /// first chunk. Drained into `presentTranscript` when that chunk lands.
+    private var autoOpenTranscriptIds: Set<String> = []
+
     private let transcriptsDir: URL
     private let handoutsDir: URL
     /// Sidecar timestamp cues for transcripts, keyed by episode id. Kept in their
@@ -304,15 +316,26 @@ final class AIContentStore: ObservableObject {
 
     func translationJob(_ id: String) -> JobState? { translationJobs[id] }
 
-    /// Whether a transcription job has streamed at least its first chunk, so the
-    /// viewer can open and show it before the whole episode finishes.
-    func hasPartialTranscript(_ id: String) -> Bool { partialTranscripts[id] != nil }
-
     // MARK: - Triggers
 
     func processTranscript(_ record: EpisodeRecord) {
         guard jobs[key(.transcript, record.id)] == nil, !hasTranscript(record.id) else { return }
         Task { await runTranscript(record) }
+    }
+
+    /// Start a transcript (if needed) and open the viewer as soon as content is
+    /// ready — immediately if it's already saved, else the moment its first chunk
+    /// lands (see `presentTranscript`). Used by the action button so the open no
+    /// longer depends on that button still being on screen when the chunk arrives.
+    func transcribeAndOpen(_ record: EpisodeRecord) {
+        if hasTranscript(record.id) { presentTranscript = record; return }
+        autoOpenTranscriptIds.insert(record.id)
+        // Clear a prior failure so retrying actually re-runs (processTranscript
+        // no-ops while any job — including a failed one — is recorded).
+        if case .failed = jobs[key(.transcript, record.id)] {
+            jobs.removeValue(forKey: key(.transcript, record.id))
+        }
+        processTranscript(record)
     }
 
     /// Generate (or regenerate, if the language changed) the translation for an
@@ -341,6 +364,8 @@ final class AIContentStore: ObservableObject {
         translationJobs.removeAll()
         partialTranscripts.removeAll()
         partialTranslations.removeAll()
+        autoOpenTranscriptIds.removeAll()
+        presentTranscript = nil
         DriveSync.requestSync()
     }
 
@@ -358,6 +383,7 @@ final class AIContentStore: ObservableObject {
             translationJobs.removeValue(forKey: id)
             partialTranscripts.removeValue(forKey: id)
             partialTranslations.removeValue(forKey: id)
+            autoOpenTranscriptIds.remove(id)
             if syncOn {
                 ICloudSync.shared.removeUp(.cues, id: id)
                 ICloudSync.shared.removeUp(.translation, id: id)
@@ -459,6 +485,12 @@ final class AIContentStore: ObservableObject {
                 // attach cues when they still line up 1:1 with the sentences.
                 let cuesSoFar = (cuesAligned && cues.count == sentences.count) ? cues : []
                 partialTranscripts[record.id] = PartialTranscript(sentences: sentences, cues: cuesSoFar)
+                // First chunk is ready — open the viewer now if the user asked to.
+                // (Single-chunk episodes hit this too, then finish synchronously;
+                // the signal we set here survives that.)
+                if i == 0, autoOpenTranscriptIds.remove(record.id) != nil {
+                    presentTranscript = record
+                }
             }
 
             let text = sentences.joined(separator: "\n")
@@ -487,6 +519,7 @@ final class AIContentStore: ObservableObject {
         } catch {
             // Nothing was saved, so drop any streamed partial; the button shows failed.
             partialTranscripts.removeValue(forKey: record.id)
+            autoOpenTranscriptIds.remove(record.id)
             jobs[k] = .failed(error.localizedDescription)
             return nil
         }

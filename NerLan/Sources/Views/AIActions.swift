@@ -33,6 +33,11 @@ struct AIActionButton: View {
             if let failure { errorText = failure; showError = true; return }
             if ready {
                 open()
+            } else if kind == .transcript {
+                // The store opens the viewer when the first chunk lands, from a
+                // stable presenter — so it shows even if this button (and the
+                // player it lives in) is gone by then.
+                ai.transcribeAndOpen(record)
             } else {
                 pendingOpen = true
                 start()
@@ -55,17 +60,15 @@ struct AIActionButton: View {
         .onChange(of: ready) { _, isReady in
             if isReady, pendingOpen { pendingOpen = false; open() }
         }
-        // A transcript streams in per ~20-min chunk; open the viewer as soon as the
-        // first chunk is ready rather than waiting for the whole episode.
-        .onChange(of: ai.hasPartialTranscript(record.id)) { _, hasPartial in
-            if hasPartial, pendingOpen, kind == .transcript { pendingOpen = false; open() }
-        }
         .onChange(of: failure) { _, message in
             if let message, pendingOpen { pendingOpen = false; errorText = message; showError = true }
         }
         .sheet(isPresented: $showSheet) { sheet.appEnvironment() }
         .alert("處理失敗", isPresented: $showError) {
-            Button("重試") { pendingOpen = true; start() }
+            Button("重試") {
+                if kind == .transcript { ai.transcribeAndOpen(record) }
+                else { pendingOpen = true; start() }
+            }
             Button("好", role: .cancel) {}
         } message: {
             Text(errorText)

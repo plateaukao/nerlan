@@ -5,6 +5,11 @@ struct ContentView: View {
     @EnvironmentObject var ai: AIContentStore
     @EnvironmentObject var study: StudyPanel
     @State private var showPlayer = false
+    /// iPhone-only: a transcript the store asked to auto-open once its first chunk
+    /// landed (see `AIContentStore.presentTranscript`). Presented from here — the
+    /// stable root — so it shows even after the player sheet that started it is
+    /// gone. iPad routes through the always-visible side panel instead.
+    @State private var autoTranscript: EpisodeRecord?
 
     var body: some View {
         Group {
@@ -18,9 +23,37 @@ struct ContentView: View {
             PlayerView()
                 .appEnvironment()
         }
+        .sheet(item: $autoTranscript) { record in
+            TranscriptView(record: record,
+                           text: ai.transcriptText(record.id) ?? "",
+                           cues: ai.transcriptCues(record.id),
+                           onClose: { autoTranscript = nil })
+                .appEnvironment()
+        }
+        .onChange(of: ai.presentTranscript) { _, record in
+            guard let record else { return }
+            ai.presentTranscript = nil
+            presentTranscriptView(record)
+        }
         // Pull anything new from Google Drive on launch (no-op unless Drive sync is
         // on and signed in). iCloud sync starts itself from the store inits.
         .task { DriveSync.shared.syncNow() }
+    }
+
+    /// Open a freshly-ready transcript from the stable root: the side panel on
+    /// iPad, a root sheet on iPhone. If the player sheet is up it's dismissed first
+    /// (you can't stack two root sheets), then the transcript presents once that
+    /// dismissal animation finishes — audio keeps playing via the mini player.
+    private func presentTranscriptView(_ record: EpisodeRecord) {
+        if StudyPanel.usesSidePanel {
+            showPlayer = false
+            study.item = .transcript(record)
+        } else if showPlayer {
+            showPlayer = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { autoTranscript = record }
+        } else {
+            autoTranscript = record
+        }
     }
 
     /// iPad: the browser on the left, the transcript / handout / 講義 panel on
