@@ -55,6 +55,11 @@ struct AIActionButton: View {
         .onChange(of: ready) { _, isReady in
             if isReady, pendingOpen { pendingOpen = false; open() }
         }
+        // A transcript streams in per ~20-min chunk; open the viewer as soon as the
+        // first chunk is ready rather than waiting for the whole episode.
+        .onChange(of: ai.hasPartialTranscript(record.id)) { _, hasPartial in
+            if hasPartial, pendingOpen, kind == .transcript { pendingOpen = false; open() }
+        }
         .onChange(of: failure) { _, message in
             if let message, pendingOpen { pendingOpen = false; errorText = message; showError = true }
         }

@@ -66,6 +66,13 @@ struct TranscriptView: View {
     /// isn't the playing episode / there are no cues / playback is before the first.
     @State private var activeLine: Int?
 
+    /// Transcript content actually rendered: the live partial while a transcription
+    /// job streams in per ~20-min chunk, then the saved file once written, falling
+    /// back to the snapshot passed in. Cached in @State (refreshed on appear and
+    /// when the partial changes) so the per-tick highlight never re-reads files.
+    @State private var loadedSentences: [String] = []
+    @State private var loadedCues: [TranscriptCue]?
+
     /// Shadowing mode: when on, the targeted sentence loops and a sentence-transport
     /// bar appears so the learner can repeat each line. Only offered when this is
     /// the playing episode and the transcript has timestamp cues. Reset per open.
@@ -103,10 +110,25 @@ struct TranscriptView: View {
     }
 
     private var lines: [Line] {
-        if let cues, !cues.isEmpty {
-            return cues.enumerated().map { Line(id: $0.offset, text: $0.element.text, start: $0.element.start) }
+        if let loadedCues, !loadedCues.isEmpty {
+            return loadedCues.enumerated().map { Line(id: $0.offset, text: $0.element.text, start: $0.element.start) }
         }
-        return sentences.enumerated().map { Line(id: $0.offset, text: $0.element, start: nil) }
+        return loadedSentences.enumerated().map { Line(id: $0.offset, text: $0.element, start: nil) }
+    }
+
+    /// Pull the current transcript content from the store: prefer the streaming
+    /// partial, then the saved file, then the snapshot props captured at open.
+    private func refreshTranscriptContent() {
+        if let partial = ai.partialTranscripts[episodeId] {
+            loadedSentences = partial.sentences
+            loadedCues = partial.cues.isEmpty ? nil : partial.cues
+        } else if let fileText = ai.transcriptText(episodeId) {
+            loadedSentences = AIContentStore.displaySentences(fileText)
+            loadedCues = ai.transcriptCues(episodeId) ?? cues
+        } else {
+            loadedSentences = sentences
+            loadedCues = cues
+        }
     }
 
     private var isCurrentEpisode: Bool {
@@ -115,7 +137,7 @@ struct TranscriptView: View {
 
     /// Shadowing needs the playing episode plus timestamp cues to loop by.
     private var shadowingAvailable: Bool {
-        isCurrentEpisode && !(cues?.isEmpty ?? true)
+        isCurrentEpisode && !(loadedCues?.isEmpty ?? true)
     }
 
     /// Index used for row highlight/scroll: the loop target while shadowing, else
@@ -125,7 +147,7 @@ struct TranscriptView: View {
     /// The `[start, end)` span of sentence `index`: its cue start to the next cue's
     /// start (the episode duration for the last sentence).
     private func region(for index: Int) -> (start: Double, end: Double)? {
-        guard let cues, index >= 0, index < cues.count else { return nil }
+        guard let cues = loadedCues, index >= 0, index < cues.count else { return nil }
         let start = cues[index].start
         let end = index + 1 < cues.count ? cues[index + 1].start
                                          : PlayerManager.shared.clock.duration
@@ -193,6 +215,13 @@ struct TranscriptView: View {
     /// Point sizes for the three font-scale steps.
     private var bodyFontSize: CGFloat { [17.0, 21.0, 26.0][min(max(fontScale, 0), 2)] }
 
+    /// The transcription job's status note while it's still running for this
+    /// episode (drives the streaming footer), else nil.
+    private var transcriptRunningNote: String? {
+        if case .running(let note)? = ai.jobState(.transcript, episodeId) { return note }
+        return nil
+    }
+
     private var translationJob: AIContentStore.JobState? { ai.translationJob(episodeId) }
     private var isTranslating: Bool {
         if case .running = translationJob { return true } else { return false }
@@ -229,11 +258,23 @@ struct TranscriptView: View {
         .onChange(of: translationJob) { _, state in
             handleTranslationJobChange(state)
         }
+        // The transcript streams in per chunk (and clears to the saved file when
+        // done); re-read the rendered content whenever it changes.
+        .onChange(of: ai.partialTranscripts[episodeId]) { _, _ in
+            refreshTranscriptContent()
+        }
+        // Switch into the requested translated mode as soon as the first batch
+        // lands, so the rows visibly fill in instead of waiting for the whole job.
+        .onChange(of: streamingTranslation) { _, partial in
+            guard partial != nil, let pending = pendingMode, translateMode != pending else { return }
+            translateMode = pending
+        }
         // Keep the screen awake while the transcript is on screen (player caption
         // mode, the standalone sheet, or the iPad panel) so it doesn't sleep
         // mid-read. Restored as soon as the view goes away.
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
+            refreshTranscriptContent()   // before restore/shadowing, which read the cues
             restoreTranslatePreference()
             if startShadowing && shadowingAvailable && !shadowing { toggleShadowing() }
         }
@@ -248,8 +289,21 @@ struct TranscriptView: View {
 
     private var transcriptList: some View {
         ScrollViewReader { proxy in
-            List(lines) { line in
-                row(line)
+            List {
+                ForEach(lines) { line in
+                    row(line)
+                }
+                // While the transcript is still streaming in, a footer shows the
+                // job's progress so the partial doesn't look like the whole episode.
+                if let note = transcriptRunningNote {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text(note).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+                    .listRowSeparator(.hidden)
+                }
             }
             .listStyle(.plain)
             .safeAreaInset(edge: .bottom) {
@@ -374,7 +428,7 @@ struct TranscriptView: View {
     /// between sentences and replay the current one (left), record your read and
     /// play it back (middle), and pick the repeat count (right).
     private var shadowControlBar: some View {
-        let count = cues?.count ?? 0
+        let count = loadedCues?.count ?? 0
         let i = shadowIndex
         let key = recordKey(i ?? -1)
         return HStack(spacing: 18) {
@@ -434,10 +488,21 @@ struct TranscriptView: View {
         .background(.bar)
     }
 
-    /// The translation for a line, when one is loaded and aligned.
+    /// In-flight translation for the current target language, streamed per batch —
+    /// a growing prefix the view shows filling in. nil when none is running for this
+    /// episode/language.
+    private var streamingTranslation: [String]? {
+        guard let partial = ai.partialTranslations[episodeId],
+              partial.language == settings.translationLanguage else { return nil }
+        return partial.sentences
+    }
+
+    /// The translation for a line: the live streaming partial while a job runs, else
+    /// the loaded (cached/finished) translation.
     private func translationText(for line: Line) -> String? {
-        guard let translation, line.id < translation.count else { return nil }
-        return translation[line.id]
+        let source = streamingTranslation ?? translation
+        guard let source, line.id < source.count else { return nil }
+        return source[line.id]
     }
 
     // MARK: - Translate cycling
@@ -476,6 +541,10 @@ struct TranscriptView: View {
            stored.language == settings.translationLanguage {
             translation = stored.sentences
             translateMode = translatePreference
+        } else if translatePreference != 0, streamingTranslation != nil {
+            // Reopened mid-translation: keep filling into the remembered mode.
+            pendingMode = translatePreference
+            translateMode = translatePreference
         } else {
             translateMode = 0
         }
@@ -495,6 +564,9 @@ struct TranscriptView: View {
         case .failed(let message):
             if pendingMode != nil {
                 pendingMode = nil
+                // Nothing committed (we may have optimistically switched while
+                // streaming) — fall back to the original.
+                if translation == nil { translateMode = 0 }
                 translateErrorText = message
                 showTranslateError = true
             }
@@ -509,7 +581,7 @@ struct TranscriptView: View {
     /// highlight) unless this is the playing episode and we have cues. Writes the
     /// `@State` only on change, so equal ticks don't re-render.
     private func updateActiveLine(_ t: Double) {
-        guard isCurrentEpisode, let cues, !cues.isEmpty else {
+        guard isCurrentEpisode, let cues = loadedCues, !cues.isEmpty else {
             if activeLine != nil { activeLine = nil }
             return
         }

@@ -320,8 +320,12 @@ enum OpenAIService {
     /// preserved; each batch's returned line count is reconciled to its input
     /// count (pad/truncate) so a stray dropped/added line never shifts the
     /// alignment of everything after it.
+    /// `onPartial`, when given, is called on the main actor after each batch with
+    /// the cumulative translation so far (a growing prefix), so a caller can show
+    /// the translation filling in instead of waiting for the whole transcript.
     static func translateSentences(_ sentences: [String], to language: String,
-                                   config: Config) async throws -> [String] {
+                                   config: Config,
+                                   onPartial: (@MainActor @Sendable ([String]) -> Void)? = nil) async throws -> [String] {
         guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
         guard !sentences.isEmpty else { return [] }
         let system = """
@@ -344,6 +348,9 @@ enum OpenAIService {
             if lines.count > batch.count { lines = Array(lines.prefix(batch.count)) }
             while lines.count < batch.count { lines.append("") }
             out.append(contentsOf: lines)
+            // Hop to the main actor to publish this batch; awaiting keeps the
+            // partials strictly in order (each lands before the next batch starts).
+            await onPartial?(out)
         }
         return out
     }

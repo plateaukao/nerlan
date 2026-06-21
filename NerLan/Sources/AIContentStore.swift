@@ -17,6 +17,16 @@ final class AIContentStore: ObservableObject {
         case failed(String)    // error message
     }
 
+    /// A transcript still being produced, published per ~20-minute audio chunk so
+    /// the viewer can show the first chunk while later chunks are still
+    /// transcribing. `cues` is either empty or 1:1 with `sentences` (never
+    /// partially aligned). In-memory only — never persisted or synced; the finished
+    /// transcript file becomes the source of truth once written.
+    struct PartialTranscript: Equatable {
+        var sentences: [String]
+        var cues: [TranscriptCue]
+    }
+
     /// Keyed "transcript:{id}" / "handout:{id}"; absence means idle.
     @Published private(set) var jobs: [String: JobState] = [:]
 
@@ -24,6 +34,15 @@ final class AIContentStore: ObservableObject {
     /// triggered from the transcript screen (not the shared AI action buttons), so
     /// it gets its own published map rather than another `Kind`.
     @Published private(set) var translationJobs: [String: JobState] = [:]
+
+    /// Transcript content streamed while a transcription job runs, keyed by episode
+    /// id; absence means no job is in flight (use the saved file). See `PartialTranscript`.
+    @Published private(set) var partialTranscripts: [String: PartialTranscript] = [:]
+
+    /// Translation streamed per batch (~40 sentences) while a translation job runs,
+    /// keyed by episode id, so the transcript screen fills in top-down. Carries its
+    /// target language so a partial for the wrong language is ignored. Cleared on completion.
+    @Published private(set) var partialTranslations: [String: StoredTranslation] = [:]
 
     private let transcriptsDir: URL
     private let handoutsDir: URL
@@ -285,6 +304,10 @@ final class AIContentStore: ObservableObject {
 
     func translationJob(_ id: String) -> JobState? { translationJobs[id] }
 
+    /// Whether a transcription job has streamed at least its first chunk, so the
+    /// viewer can open and show it before the whole episode finishes.
+    func hasPartialTranscript(_ id: String) -> Bool { partialTranscripts[id] != nil }
+
     // MARK: - Triggers
 
     func processTranscript(_ record: EpisodeRecord) {
@@ -316,6 +339,8 @@ final class AIContentStore: ObservableObject {
         persistIndex()
         jobs.removeAll()
         translationJobs.removeAll()
+        partialTranscripts.removeAll()
+        partialTranslations.removeAll()
         DriveSync.requestSync()
     }
 
@@ -331,6 +356,8 @@ final class AIContentStore: ObservableObject {
             try? FileManager.default.removeItem(at: cuesURL(id))
             try? FileManager.default.removeItem(at: translationURL(id))
             translationJobs.removeValue(forKey: id)
+            partialTranscripts.removeValue(forKey: id)
+            partialTranslations.removeValue(forKey: id)
             if syncOn {
                 ICloudSync.shared.removeUp(.cues, id: id)
                 ICloudSync.shared.removeUp(.translation, id: id)
@@ -370,10 +397,12 @@ final class AIContentStore: ObservableObject {
                 throw OpenAIService.APIError.server("找不到音訊檔")
             }
             jobs[k] = .running("轉錄中…")
-            // Long episodes are split into chunks (the gpt-4o-transcribe models
-            // cap input at 1400 s); transcribe each and join. Whisper also returns
-            // per-segment timestamps, collected (in absolute episode time) to drive
-            // sentence highlighting.
+            // Long episodes are split into ~20-minute chunks (the gpt-4o-transcribe
+            // models cap input at 1400 s). Each chunk is transcribed, re-segmented
+            // and aligned on its own, then appended and published — so the viewer
+            // can show the first chunk while later chunks are still transcribing,
+            // rather than waiting for the whole episode. Whisper returns per-segment
+            // timestamps (shifted to absolute episode time) to drive highlighting.
             let chunks = await SpeechAudioExporter.exportChunks(source)
             defer { cleanupChunks(chunks, original: source) }
             // A monolingual source (a podcast) carries its locale: force that
@@ -384,62 +413,80 @@ final class AIContentStore: ObservableObject {
             let locale = record.audioLocale
             let prompt = locale == nil ? OpenAIService.transcriptionPrompt(for: record.language) : nil
             let txConfig = settings.transcriptionConfig
-            var parts: [String] = []
-            var segments: [OpenAIService.Segment] = []
+            let chatConfig = settings.chatConfig
+            let multi = chunks.count > 1
+            var sentences: [String] = []
+            var cues: [TranscriptCue] = []
+            // Cues stay usable only while every chunk so far yields timestamps; once
+            // one doesn't (e.g. a non-whisper model), the transcript renders without
+            // highlighting rather than with cues that drift out of alignment.
+            var cuesAligned = true
             for (i, chunk) in chunks.enumerated() {
-                if chunks.count > 1 { jobs[k] = .running("轉錄中…（\(i + 1)/\(chunks.count)）") }
+                jobs[k] = .running(multi ? "轉錄中…（\(i + 1)/\(chunks.count)）" : "轉錄中…")
                 let result = try await OpenAIService.transcribe(
                     fileURL: chunk, config: txConfig,
                     prompt: prompt, language: locale)
-                parts.append(result.text)
-                if !result.segments.isEmpty {
-                    // Shift each chunk's timestamps onto the absolute episode
-                    // timeline. A chunk file is normally 0-based, so add its start
-                    // offset; but a trimmed chunk can carry a baked-in source-time
-                    // offset, detected here (times already near the chunk's absolute
-                    // position) and then used as-is. Single-chunk episodes — the
-                    // common case — are i == 0, so times pass through unchanged.
-                    let chunkStart = Double(i) * SpeechAudioExporter.maxChunkSeconds
-                    let minStart = result.segments.map(\.start).min() ?? 0
-                    let offset = (i > 0 && minStart > chunkStart * 0.5) ? 0 : chunkStart
-                    segments.append(contentsOf: result.segments.map {
-                        OpenAIService.Segment(start: $0.start + offset, text: $0.text)
-                    })
+
+                // Shift this chunk's timestamps onto the absolute episode timeline.
+                // A chunk file is normally 0-based, so add its start offset; but a
+                // trimmed chunk can carry a baked-in source-time offset, detected
+                // here (times already near the chunk's absolute position) and used
+                // as-is. The first chunk is i == 0, so its times pass through.
+                let chunkStart = Double(i) * SpeechAudioExporter.maxChunkSeconds
+                let minStart = result.segments.map(\.start).min() ?? 0
+                let offset = (i > 0 && minStart > chunkStart * 0.5) ? 0 : chunkStart
+                let chunkSegments = result.segments.map {
+                    OpenAIService.Segment(start: $0.start + offset, text: $0.text)
                 }
+
+                // Re-segment just this chunk into one sentence per line with the chat
+                // model (adds sentence-ending punctuation only, never alters content);
+                // on failure keep the chunk's raw text so the paid transcription isn't
+                // lost. Then align its sentences to its own timestamps (B3b).
+                jobs[k] = .running(multi ? "整理句子中…（\(i + 1)/\(chunks.count)）" : "整理句子中…")
+                let chunkText = (try? await OpenAIService.segmentTranscript(
+                    result.text, config: chatConfig)) ?? result.text
+                let chunkSentences = Self.displaySentences(chunkText)
+                let chunkCues = Self.alignCues(sentences: chunkSentences, segments: chunkSegments)
+
+                sentences.append(contentsOf: chunkSentences)
+                if cuesAligned && chunkCues.count == chunkSentences.count {
+                    cues.append(contentsOf: chunkCues)
+                } else {
+                    cuesAligned = false
+                }
+                // Publish what's ready so an open viewer shows this chunk now. Only
+                // attach cues when they still line up 1:1 with the sentences.
+                let cuesSoFar = (cuesAligned && cues.count == sentences.count) ? cues : []
+                partialTranscripts[record.id] = PartialTranscript(sentences: sentences, cues: cuesSoFar)
             }
-            let raw = parts.joined(separator: "\n")
 
-            // Re-segment into one sentence per line with the chat model (adds
-            // sentence-ending punctuation only, never alters content). If that
-            // step fails, keep the raw transcript so the paid transcription isn't lost.
-            jobs[k] = .running("整理句子中…")
-            let text = (try? await OpenAIService.segmentTranscript(
-                raw, config: settings.chatConfig)) ?? raw
-
+            let text = sentences.joined(separator: "\n")
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
 
-            // B3b: map each cleaned display sentence back to the ASR segment that
-            // covers its first content character, so each gets a start time. Best
-            // effort — no segments (e.g. a non-whisper model) means no cues file
-            // and the transcript simply shows without highlighting.
-            let sentences = Self.displaySentences(text)
-            let cues = Self.alignCues(sentences: sentences, segments: segments)
-            if !cues.isEmpty, let data = try? JSONEncoder().encode(cues) {
+            // Best effort — no usable timestamps (e.g. a non-whisper model) means no
+            // cues file and the transcript simply shows without highlighting.
+            let alignedCues = (cuesAligned && cues.count == sentences.count) ? cues : []
+            if !alignedCues.isEmpty, let data = try? JSONEncoder().encode(alignedCues) {
                 try? data.write(to: cuesURL(record.id))
             } else {
                 try? FileManager.default.removeItem(at: cuesURL(record.id))
             }
+            // The finished file is now the source of truth; drop the streamed partial.
+            partialTranscripts.removeValue(forKey: record.id)
             noteRecord(record)
             if syncOn {
                 let name = Self.displayName(record)
                 ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: name)
                 // The cue sidecar rides up alongside its transcript so other devices
                 // get the highlighting too.
-                if !cues.isEmpty { ICloudSync.shared.mirrorUp(.cues, id: record.id, displayName: name) }
+                if !alignedCues.isEmpty { ICloudSync.shared.mirrorUp(.cues, id: record.id, displayName: name) }
             }
             jobs.removeValue(forKey: k)   // publishes → hasTranscript-driven UI refreshes
             return text
         } catch {
+            // Nothing was saved, so drop any streamed partial; the button shows failed.
+            partialTranscripts.removeValue(forKey: record.id)
             jobs[k] = .failed(error.localizedDescription)
             return nil
         }
@@ -525,16 +572,24 @@ final class AIContentStore: ObservableObject {
         translationJobs[id] = .running("翻譯中…")
         do {
             let sentences = Self.displaySentences(text)
+            // Publish each finished batch (~40 sentences) so the transcript screen
+            // fills in top-down instead of waiting for the whole transcript.
             let translated = try await OpenAIService.translateSentences(
-                sentences, to: language, config: settings.chatConfig)
+                sentences, to: language, config: settings.chatConfig,
+                onPartial: { [weak self] soFar in
+                    self?.partialTranslations[id] = StoredTranslation(language: language, sentences: soFar)
+                })
             let stored = StoredTranslation(language: language, sentences: translated)
             try JSONEncoder().encode(stored).write(to: translationURL(id))
             noteRecord(record)
             if syncOn {
                 ICloudSync.shared.mirrorUp(.translation, id: id, displayName: Self.displayName(record))
             }
+            // The saved file is now the source of truth; drop the streamed partial.
+            partialTranslations.removeValue(forKey: id)
             translationJobs.removeValue(forKey: id)   // publishes → transcript screen reloads
         } catch {
+            partialTranslations.removeValue(forKey: id)
             translationJobs[id] = .failed(error.localizedDescription)
         }
     }
