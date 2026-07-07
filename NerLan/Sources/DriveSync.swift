@@ -117,7 +117,9 @@ final class DriveSync: ObservableObject {
         do {
             let token = try await auth.accessToken()
             let result = try await performSync(token: token)
-            status = "已同步（↑\(result.pushed) ↓\(result.pulled)）"
+            status = result.skipped.isEmpty
+                ? "已同步（↑\(result.pushed) ↓\(result.pulled)）"
+                : "已同步（↑\(result.pushed) ↓\(result.pulled)），\(result.skipped.count) 個檔案無法解析，已略過"
             if result.pulled > 0 { reloadStores() }
         } catch is DriveAuth.ReauthRequired {
             accountEmail = auth.email   // nil after the failed refresh signed us out
@@ -170,10 +172,17 @@ final class DriveSync: ObservableObject {
         var state: [String: FileState] = [:]
     }
 
-    private nonisolated func performSync(token: String) async throws -> (pushed: Int, pulled: Int) {
+    /// A sync artifact that exists but doesn't decode (truncated upload, wire-format
+    /// drift). Thrown instead of merging: treating it as empty would make the merge
+    /// "win" with only the other side's entries and silently wipe the corrupt side.
+    /// The file is skipped for this run and retried on the next sync.
+    private struct CorruptSyncData: Error { let file: String }
+
+    private nonisolated func performSync(token: String) async throws -> (pushed: Int, pulled: Int, skipped: [String]) {
         let remote = try await listFiles(token: token)
         let prev = loadState()
         var pushed = 0, pulled = 0
+        var skipped: [String] = []
         var newState = prev.files
 
         func apply(_ outcome: SyncOutcome) {
@@ -181,19 +190,24 @@ final class DriveSync: ObservableObject {
             pulled += outcome.pulled
             for (key, value) in outcome.state { newState[key] = value }
         }
+        // A corrupt file skips just that artifact; anything else still aborts the run.
+        func run(_ step: () async throws -> SyncOutcome) async throws {
+            do { apply(try await step()) }
+            catch let bad as CorruptSyncData { skipped.append(bad.file) }
+        }
 
         // Metadata files run sequentially — they're tiny single files. Content
         // files (potentially many) parallelize inside their own step.
-        apply(try await syncFavorites(token, remote, prev.files["favorites.json"]))
-        apply(try await syncPrograms(token, remote, prev.files["favorite-programs.json"]))
-        apply(try await syncAIIndex(token, remote, prev.files["ai-index.json"]))
-        apply(try await syncPodcasts(token, remote, prev))
+        try await run { try await self.syncFavorites(token, remote, prev.files["favorites.json"]) }
+        try await run { try await self.syncPrograms(token, remote, prev.files["favorite-programs.json"]) }
+        try await run { try await self.syncAIIndex(token, remote, prev.files["ai-index.json"]) }
+        try await run { try await self.syncPodcasts(token, remote, prev) }
         apply(try await syncContentFiles(token, remote))
         // Stats are isolated so a hiccup there can't abort the favorites/AI sync.
         apply((try? await syncStats(token, remote, prev)) ?? SyncOutcome())
 
         saveState(SyncState(files: newState))
-        return (pushed, pulled)
+        return (pushed, pulled, skipped)
     }
 
     /// Sync one whole-file JSON artifact. `merge` is pure and returns the canonical
@@ -207,7 +221,7 @@ final class DriveSync: ObservableObject {
         prev: FileState?,
         driveName: String,
         localURL: URL,
-        merge: (_ localBytes: Data?, _ remoteBytes: Data?) -> (local: Data, remote: Data)
+        merge: (_ localBytes: Data?, _ remoteBytes: Data?) throws -> (local: Data, remote: Data)
     ) async throws -> SyncOutcome {
         let rf = remote[driveName]
         let localBytes = try? Data(contentsOf: localURL)
@@ -219,7 +233,7 @@ final class DriveSync: ObservableObject {
         if !remoteChanged && !localChanged { return SyncOutcome() }  // in sync since last time
 
         let remoteBytes = rf != nil ? try await download(token: token, id: rf!.id) : nil
-        let merged = merge(localBytes, remoteBytes)
+        let merged = try merge(localBytes, remoteBytes)
         var pushed = 0, pulled = 0
         if merged.local != localBytes {
             try? FileManager.default.createDirectory(
@@ -240,8 +254,8 @@ final class DriveSync: ObservableObject {
     private nonisolated func syncFavorites(_ token: String, _ remote: [String: DriveFile], _ prev: FileState?) async throws -> SyncOutcome {
         try await syncMergedFile(token: token, remote: remote, prev: prev,
                                  driveName: "favorites.json", localURL: favoritesURL) { local, remoteBytes in
-            let merged = Self.mergeById(local: Self.decodeRecords(local, wire: false),
-                                        remote: Self.decodeRecords(remoteBytes, wire: true)) { $0.id }
+            let merged = Self.mergeById(local: try Self.decodeRecords(local, wire: false, file: "favorites.json (local)"),
+                                        remote: try Self.decodeRecords(remoteBytes, wire: true, file: "favorites.json")) { $0.id }
             return (Self.encodeRecords(merged, wire: false), Self.encodeRecords(merged, wire: true))
         }
     }
@@ -250,8 +264,8 @@ final class DriveSync: ObservableObject {
         // Program has no URL-casing divergence — local and remote bytes are identical.
         try await syncMergedFile(token: token, remote: remote, prev: prev,
                                  driveName: "favorite-programs.json", localURL: programsURL) { local, remoteBytes in
-            let merged = Self.mergeById(local: Self.decodeList(Program.self, local),
-                                        remote: Self.decodeList(Program.self, remoteBytes)) { $0.programId }
+            let merged = Self.mergeById(local: try Self.decodeList(Program.self, local, file: "favorite-programs.json (local)"),
+                                        remote: try Self.decodeList(Program.self, remoteBytes, file: "favorite-programs.json")) { $0.programId }
             let data = (try? JSONEncoder().encode(merged)) ?? Data("[]".utf8)
             return (data, data)
         }
@@ -261,8 +275,8 @@ final class DriveSync: ObservableObject {
         try await syncMergedFile(token: token, remote: remote, prev: prev,
                                  driveName: "ai-index.json", localURL: aiIndexURL) { local, remoteBytes in
             // local overrides remote on key conflict (matches Android).
-            var merged = Self.decodeRecordMap(remoteBytes, wire: true)
-            for (key, value) in Self.decodeRecordMap(local, wire: false) { merged[key] = value }
+            var merged = try Self.decodeRecordMap(remoteBytes, wire: true, file: "ai-index.json")
+            for (key, value) in try Self.decodeRecordMap(local, wire: false, file: "ai-index.json (local)") { merged[key] = value }
             return (Self.encodeRecordMap(merged, wire: false), Self.encodeRecordMap(merged, wire: true))
         }
     }
@@ -321,9 +335,10 @@ final class DriveSync: ObservableObject {
 
         let ledgerRemote = ledgerRf != nil ? try await download(token: token, id: ledgerRf!.id) : nil
         let feedsRemote = feedsRf != nil ? try await download(token: token, id: feedsRf!.id) : nil
-        let mergedLedger = Self.mergeLedger(Self.decodeLedger(ledgerLocal), Self.decodeLedger(ledgerRemote))
-        let unionFeeds = Self.mergeById(local: Self.decodeFeeds(feedsLocal, wire: false),
-                                        remote: Self.decodeFeeds(feedsRemote, wire: true)) { $0.id }
+        let mergedLedger = Self.mergeLedger(try Self.decodeLedger(ledgerLocal, file: "podcast-subs.json (local)"),
+                                            try Self.decodeLedger(ledgerRemote, file: "podcast-subs.json"))
+        let unionFeeds = Self.mergeById(local: try Self.decodeFeeds(feedsLocal, wire: false, file: "podcasts.json (local)"),
+                                        remote: try Self.decodeFeeds(feedsRemote, wire: true, file: "podcasts.json")) { $0.id }
         let subscribed = unionFeeds.filter { mergedLedger[$0.id]?.subscribed ?? true }
 
         let ledgerBytes = Self.encodeLedger(mergedLedger)
@@ -437,17 +452,23 @@ final class DriveSync: ObservableObject {
 
     // MARK: - Codec helpers (iOS-native vs Android-wire)
 
-    private nonisolated static func decodeList<T: Decodable>(_ type: T.Type, _ data: Data?) -> [T] {
+    // A nil input (file absent) decodes as empty; present-but-undecodable bytes
+    // throw `CorruptSyncData` so the caller skips this artifact instead of letting
+    // an empty merge overwrite the other side.
+    private nonisolated static func decodeList<T: Decodable>(_ type: T.Type, _ data: Data?, file: String) throws -> [T] {
         guard let data else { return [] }
-        return (try? JSONDecoder().decode([T].self, from: data)) ?? []
+        guard let list = try? JSONDecoder().decode([T].self, from: data) else { throw CorruptSyncData(file: file) }
+        return list
     }
 
-    private nonisolated static func decodeRecords(_ data: Data?, wire: Bool) -> [EpisodeRecord] {
+    private nonisolated static func decodeRecords(_ data: Data?, wire: Bool, file: String) throws -> [EpisodeRecord] {
         guard let data else { return [] }
         if wire {
-            return ((try? JSONDecoder().decode([WireRecord].self, from: data)) ?? []).map { $0.model }
+            guard let list = try? JSONDecoder().decode([WireRecord].self, from: data) else { throw CorruptSyncData(file: file) }
+            return list.map { $0.model }
         }
-        return (try? JSONDecoder().decode([EpisodeRecord].self, from: data)) ?? []
+        guard let list = try? JSONDecoder().decode([EpisodeRecord].self, from: data) else { throw CorruptSyncData(file: file) }
+        return list
     }
 
     private nonisolated static func encodeRecords(_ records: [EpisodeRecord], wire: Bool) -> Data {
@@ -456,12 +477,14 @@ final class DriveSync: ObservableObject {
         return (try? encoder.encode(records)) ?? Data("[]".utf8)
     }
 
-    private nonisolated static func decodeRecordMap(_ data: Data?, wire: Bool) -> [String: EpisodeRecord] {
+    private nonisolated static func decodeRecordMap(_ data: Data?, wire: Bool, file: String) throws -> [String: EpisodeRecord] {
         guard let data else { return [:] }
         if wire {
-            return ((try? JSONDecoder().decode([String: WireRecord].self, from: data)) ?? [:]).mapValues { $0.model }
+            guard let map = try? JSONDecoder().decode([String: WireRecord].self, from: data) else { throw CorruptSyncData(file: file) }
+            return map.mapValues { $0.model }
         }
-        return (try? JSONDecoder().decode([String: EpisodeRecord].self, from: data)) ?? [:]
+        guard let map = try? JSONDecoder().decode([String: EpisodeRecord].self, from: data) else { throw CorruptSyncData(file: file) }
+        return map
     }
 
     private nonisolated static func encodeRecordMap(_ map: [String: EpisodeRecord], wire: Bool) -> Data {
@@ -471,12 +494,14 @@ final class DriveSync: ObservableObject {
         return (try? encoder.encode(map)) ?? Data("{}".utf8)
     }
 
-    private nonisolated static func decodeFeeds(_ data: Data?, wire: Bool) -> [PodcastFeed] {
+    private nonisolated static func decodeFeeds(_ data: Data?, wire: Bool, file: String) throws -> [PodcastFeed] {
         guard let data else { return [] }
         if wire {
-            return ((try? JSONDecoder().decode([WireFeed].self, from: data)) ?? []).map { $0.model }
+            guard let list = try? JSONDecoder().decode([WireFeed].self, from: data) else { throw CorruptSyncData(file: file) }
+            return list.map { $0.model }
         }
-        return (try? JSONDecoder().decode([PodcastFeed].self, from: data)) ?? []
+        guard let list = try? JSONDecoder().decode([PodcastFeed].self, from: data) else { throw CorruptSyncData(file: file) }
+        return list
     }
 
     private nonisolated static func encodeFeeds(_ feeds: [PodcastFeed], wire: Bool) -> Data {
@@ -485,9 +510,10 @@ final class DriveSync: ObservableObject {
         return (try? encoder.encode(feeds)) ?? Data("[]".utf8)
     }
 
-    private nonisolated static func decodeLedger(_ data: Data?) -> [String: PodcastSubEntry] {
+    private nonisolated static func decodeLedger(_ data: Data?, file: String) throws -> [String: PodcastSubEntry] {
         guard let data else { return [:] }
-        return (try? JSONDecoder().decode([String: PodcastSubEntry].self, from: data)) ?? [:]
+        guard let map = try? JSONDecoder().decode([String: PodcastSubEntry].self, from: data) else { throw CorruptSyncData(file: file) }
+        return map
     }
 
     private nonisolated static func encodeLedger(_ ledger: [String: PodcastSubEntry]) -> Data {
