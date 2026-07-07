@@ -202,7 +202,7 @@ final class PlayerManager: ObservableObject {
 
     /// Auto-advance when an episode finishes; honors the repeat mode.
     private func playbackDidFinish() {
-        ListeningStatsStore.shared.noteCompleted(current)
+        ListeningStatsStore.shared.noteCompleted()
         if repeatMode == .one {
             seek(to: 0)
             player.play()

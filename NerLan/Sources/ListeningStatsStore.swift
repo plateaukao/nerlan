@@ -99,7 +99,7 @@ final class ListeningStatsStore: ObservableObject {
     }
 
     /// Record an episode played through to the end.
-    func noteCompleted(_ record: EpisodeRecord?) {
+    func noteCompleted() {
         local.completedCount += 1
         persistLocal()
         pushToKVS()
