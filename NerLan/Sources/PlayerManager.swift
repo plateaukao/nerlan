@@ -180,14 +180,17 @@ final class PlayerManager: ObservableObject {
     }
 
     func togglePlayPause() {
-        if isPlaying { player.pause() } else { player.play() }
-        isPlaying.toggle()
-        if isPlaying {
-            lastTick = Date()
-        } else {
-            lastTick = nil
-            ListeningStatsStore.shared.flush()
-        }
+        if isPlaying { pause() } else { play() }
+    }
+
+    /// Resume playback if paused — the explicit counterpart to `pause()`, for
+    /// remote commands whose meaning is "play", not "toggle". No-op with
+    /// nothing loaded (the mini player is hidden then anyway).
+    func play() {
+        guard !isPlaying, player.currentItem != nil else { return }
+        player.play()
+        isPlaying = true
+        lastTick = Date()
         updateNowPlayingElapsed()
     }
 
@@ -324,10 +327,17 @@ final class PlayerManager: ObservableObject {
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
+        // play/pause carry explicit meaning (CarPlay, watch, and a desynced
+        // Control Center can send "play" while already playing — toggling there
+        // would pause and make the desync sticky); headset taps send the
+        // dedicated toggle command, which without a handler does nothing.
         center.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.togglePlayPause() }; return .success
+            Task { @MainActor in self?.play() }; return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.pause() }; return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.togglePlayPause() }; return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
