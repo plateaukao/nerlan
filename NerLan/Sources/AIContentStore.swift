@@ -236,10 +236,11 @@ final class AIContentStore: ObservableObject {
         guard !syncingRecords else { return }
         syncingRecords = true
         CloudKVStore.shared.observe(self, selector: #selector(recordsChangedInKVS))
-        // Push any local records KVS is missing, then adopt anything new from KVS.
+        // Push any local records KVS is missing, then adopt anything new from
+        // KVS. Deferred writes: one synchronize below covers the whole batch.
         for (id, record) in records where CloudKVStore.shared.data(forKey: Self.kvsPrefix + id) == nil {
             if let data = try? JSONEncoder().encode(record) {
-                CloudKVStore.shared.set(data, forKey: Self.kvsPrefix + id)
+                CloudKVStore.shared.setDeferred(data, forKey: Self.kvsPrefix + id)
             }
         }
         adoptRecordsFromKVS()

@@ -162,8 +162,9 @@ final class PodcastStore: ObservableObject {
     private func reconcile() async {
         guard syncing else { return }
         for feed in feeds where CloudKVStore.shared.data(forKey: feedKey(feed.id)) == nil {
-            CloudKVStore.shared.set(Data(feed.id.utf8), forKey: feedKey(feed.id))
+            CloudKVStore.shared.setDeferred(Data(feed.id.utf8), forKey: feedKey(feed.id))
         }
+        CloudKVStore.shared.synchronize()
         let remoteURLs = Set(CloudKVStore.shared.entries(prefix: Self.kvsPrefix)
             .compactMap { String(data: $0.data, encoding: .utf8) })
 

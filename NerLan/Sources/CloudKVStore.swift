@@ -22,6 +22,13 @@ final class CloudKVStore {
         store.synchronize()
     }
 
+    /// Write without the per-key `synchronize()` — for bulk pushes (reconcile
+    /// loops), where flushing once per key is redundant work. Call
+    /// `synchronize()` once after the batch.
+    func setDeferred(_ data: Data, forKey key: String) {
+        store.set(data, forKey: key)
+    }
+
     func remove(_ key: String) {
         store.removeObject(forKey: key)
         store.synchronize()

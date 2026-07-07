@@ -92,11 +92,12 @@ final class FavoritesStore: ObservableObject {
         }
         guard syncing else { return }
         for record in favorites where CloudKVStore.shared.data(forKey: epKey(record.id)) == nil {
-            if let data = try? JSONEncoder().encode(record) { CloudKVStore.shared.set(data, forKey: epKey(record.id)) }
+            if let data = try? JSONEncoder().encode(record) { CloudKVStore.shared.setDeferred(data, forKey: epKey(record.id)) }
         }
         for program in programs where CloudKVStore.shared.data(forKey: progKey(program.programId)) == nil {
-            if let data = try? JSONEncoder().encode(program) { CloudKVStore.shared.set(data, forKey: progKey(program.programId)) }
+            if let data = try? JSONEncoder().encode(program) { CloudKVStore.shared.setDeferred(data, forKey: progKey(program.programId)) }
         }
+        CloudKVStore.shared.synchronize()
     }
 
     // MARK: - iCloud KVS sync
@@ -120,14 +121,15 @@ final class FavoritesStore: ObservableObject {
     private func reconcile() {
         for record in favorites where CloudKVStore.shared.data(forKey: epKey(record.id)) == nil {
             if let data = try? JSONEncoder().encode(record) {
-                CloudKVStore.shared.set(data, forKey: epKey(record.id))
+                CloudKVStore.shared.setDeferred(data, forKey: epKey(record.id))
             }
         }
         for program in programs where CloudKVStore.shared.data(forKey: progKey(program.programId)) == nil {
             if let data = try? JSONEncoder().encode(program) {
-                CloudKVStore.shared.set(data, forKey: progKey(program.programId))
+                CloudKVStore.shared.setDeferred(data, forKey: progKey(program.programId))
             }
         }
+        CloudKVStore.shared.synchronize()
         adoptFromKVS()
     }
 
