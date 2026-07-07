@@ -363,6 +363,12 @@ final class AIContentStore: ObservableObject {
     }
 
     func processHandout(_ record: EpisodeRecord) {
+        // Clear a prior failure so the error alert's 重試 actually re-runs — the
+        // guard below no-ops while any job, including a failed one, is recorded
+        // (the transcript path does the same in transcribeAndOpen).
+        if case .failed = jobs[key(.handout, record.id)] {
+            jobs.removeValue(forKey: key(.handout, record.id))
+        }
         guard jobs[key(.handout, record.id)] == nil, !hasHandout(record.id) else { return }
         Task { await runHandout(record) }
     }
