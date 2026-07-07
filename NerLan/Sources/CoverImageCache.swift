@@ -1,4 +1,5 @@
 import CryptoKit
+import ImageIO
 import UIKit
 
 /// Two-tier cover-image cache: an in-memory `NSCache` for the running session and
@@ -20,10 +21,38 @@ final class CoverImageCache {
     /// download rather than one per row.
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
+    /// Largest rendered cover is the 240pt full-player art; at 3× that's 720px.
+    /// Decoding straight to this bound keeps a 3000×3000 podcast original from
+    /// occupying ~34 MB of decoded bitmap to draw a 44pt row thumbnail.
+    private static let maxPixelSize = 720
+
     private init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         dir = caches.appendingPathComponent("covers", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        memory.totalCostLimit = 64 * 1024 * 1024   // ~64 MB of decoded covers
+    }
+
+    /// Decode at most `maxPixelSize` on the long edge, without ever inflating
+    /// the full-resolution bitmap (ImageIO thumbnailing decodes at target size).
+    private static func decodeDownsampled(_ data: Data) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+        let thumbOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ] as CFDictionary
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// Store in the memory cache with its decoded-bitmap size as the cost, so
+    /// `totalCostLimit` evicts by actual memory footprint.
+    private func remember(_ image: UIImage, key k: String) {
+        let cost = Int(image.size.width * image.scale * image.size.height * image.scale * 4)
+        memory.setObject(image, forKey: k as NSString, cost: cost)
     }
 
     /// Stable filename for a cover URL. The image endpoint's `key` query is a
@@ -71,8 +100,8 @@ final class CoverImageCache {
 
     private func fetch(_ url: URL, key k: String) async -> UIImage? {
         let file = dir.appendingPathComponent(k)
-        if let data = try? Data(contentsOf: file), let img = UIImage(data: data) {
-            memory.setObject(img, forKey: k as NSString)
+        if let data = try? Data(contentsOf: file), let img = Self.decodeDownsampled(data) {
+            remember(img, key: k)
             return img
         }
         // Bypass `URLCache` — this cache is the durable store.
@@ -80,8 +109,9 @@ final class CoverImageCache {
         req.cachePolicy = .reloadIgnoringLocalCacheData
         guard let (data, response) = try? await URLSession.shared.data(for: req),
               (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
-              let img = UIImage(data: data) else { return nil }
-        memory.setObject(img, forKey: k as NSString)
+              let img = Self.decodeDownsampled(data) else { return nil }
+        remember(img, key: k)
+        // Disk keeps the original bytes — re-decode picks the size it needs.
         try? data.write(to: file)
         return img
     }
