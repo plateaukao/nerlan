@@ -14,12 +14,6 @@ struct PlayerView: View {
     /// so the transport and action rows still fit. Portrait and iPad are unchanged.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    /// The scrubber needs the high-frequency playback position; observe the clock
-    /// directly so only this sheet re-renders on each tick.
-    @ObservedObject private var clock = PlayerManager.shared.clock
-
-    @State private var isScrubbing = false
-    @State private var scrubTime: Double = 0
     @State private var showAttachment = false
 
     /// Caption mode: when on, the transcript takes over the cover/title area as a
@@ -27,6 +21,9 @@ struct PlayerView: View {
     /// timestamp cues; reset per-episode so each starts on the cover.
     @State private var captionMode = false
     @State private var captionCues: [TranscriptCue]?
+    /// Transcript snapshot passed into the caption-mode TranscriptView, cached
+    /// here so body never reads the transcript file from disk.
+    @State private var captionText = ""
     /// iPhone presentation of the 跟讀 transcript (iPad uses the StudyPanel side
     /// panel instead). Opens the same view as the 逐字稿 button, already shadowing.
     @State private var showShadowSheet = false
@@ -43,8 +40,13 @@ struct PlayerView: View {
     }
 
     private func refreshCaptionCues() {
-        guard let id = player.current?.id, ai.hasTranscript(id) else { captionCues = nil; return }
+        guard let id = player.current?.id, ai.hasTranscript(id) else {
+            captionCues = nil
+            captionText = ""
+            return
+        }
         captionCues = ai.transcriptCues(id)
+        captionText = ai.transcriptText(id) ?? ""
     }
 
     var body: some View {
@@ -63,7 +65,7 @@ struct PlayerView: View {
                 // Take over the cover/title/program/language area with the synced
                 // transcript; its 關閉 button (or the 字幕 toggle) exits caption mode.
                 TranscriptView(record: record,
-                               text: ai.transcriptText(record.id) ?? "",
+                               text: captionText,
                                cues: captionCues,
                                onClose: { captionMode = false })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -92,31 +94,7 @@ struct PlayerView: View {
                 }
             }
 
-            // Scrubber
-            VStack(spacing: 4) {
-                Slider(
-                    value: Binding(
-                        get: { isScrubbing ? scrubTime : clock.currentTime },
-                        set: { scrubTime = $0 }
-                    ),
-                    in: 0...max(clock.duration, 1)
-                ) { editing in
-                    if editing {
-                        scrubTime = clock.currentTime
-                    } else {
-                        player.seek(to: scrubTime)
-                    }
-                    isScrubbing = editing
-                }
-                HStack {
-                    Text(timeString(isScrubbing ? scrubTime : clock.currentTime))
-                    Spacer()
-                    Text(timeString(clock.duration))
-                }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 24)
+            PlayerScrubber()
 
             // Transport
             HStack(spacing: 36) {
@@ -285,6 +263,46 @@ struct PlayerView: View {
 
     private func rateLabel(_ rate: Float) -> String {
         rate == rate.rounded() ? String(format: "%.0f×", rate) : String(format: "%g×", rate)
+    }
+}
+
+/// The scrubber + time labels, split out so only this small subtree observes
+/// the 0.5s `PlaybackClock`. When the whole sheet observed it, every tick
+/// re-rendered the entire player — including the caption-mode TranscriptView,
+/// whose hundreds of rows (and `text` snapshot, a file read) were rebuilt
+/// twice a second.
+private struct PlayerScrubber: View {
+    @EnvironmentObject var player: PlayerManager
+    @ObservedObject private var clock = PlayerManager.shared.clock
+
+    @State private var isScrubbing = false
+    @State private var scrubTime: Double = 0
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Slider(
+                value: Binding(
+                    get: { isScrubbing ? scrubTime : clock.currentTime },
+                    set: { scrubTime = $0 }
+                ),
+                in: 0...max(clock.duration, 1)
+            ) { editing in
+                if editing {
+                    scrubTime = clock.currentTime
+                } else {
+                    player.seek(to: scrubTime)
+                }
+                isScrubbing = editing
+            }
+            HStack {
+                Text(timeString(isScrubbing ? scrubTime : clock.currentTime))
+                Spacer()
+                Text(timeString(clock.duration))
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 24)
     }
 
     private func timeString(_ seconds: Double) -> String {
