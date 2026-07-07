@@ -115,9 +115,11 @@ final class ListeningStatsStore: ObservableObject {
     }
 
     /// Recompute the merged view after a Google Drive pull refreshed the peer blobs
-    /// in `stats-peers/`. The peers are read live from disk, so this just nudges the
-    /// observing screen.
-    func reloadDrivePeers() { revision += 1 }
+    /// in `stats-peers/`: drop the peer cache and nudge the observing screen.
+    func reloadDrivePeers() {
+        peerCache = nil
+        revision += 1
+    }
 
     // MARK: - Persistence
 
@@ -159,7 +161,10 @@ final class ListeningStatsStore: ObservableObject {
     }
 
     @objc private func kvsChanged() {
-        Task { @MainActor in self.revision += 1 }
+        Task { @MainActor in
+            self.peerCache = nil   // another device's blob changed — reload on next read
+            self.revision += 1
+        }
     }
 
     // MARK: - Merged read accessors (this device + other devices)
@@ -168,7 +173,24 @@ final class ListeningStatsStore: ObservableObject {
     /// are keyed by device id so a device present in both iCloud KVS and Drive is
     /// counted once (the G-counter only stays conflict-free if partitions don't
     /// overlap).
+    /// Loaded peer blobs, so the read accessors don't re-read and re-decode
+    /// every peer file (plus a full KVS dictionary copy) on each call — with
+    /// the 使用統計 screen open during playback that was ~9 accessors × every
+    /// tick, all on the main actor. Invalidated on any signal that peer data
+    /// may have changed (KVS notification, a Drive pull, sync toggles); the
+    /// flags it was built under are its key.
+    private struct PeerCache {
+        let syncingKVS: Bool
+        let driveOn: Bool
+        let peers: [Stats]
+    }
+    private var peerCache: PeerCache?
+
     private func mergedStats() -> [Stats] {
+        let driveOn = SettingsStore.shared.syncToDrive
+        if let cache = peerCache, cache.syncingKVS == syncing, cache.driveOn == driveOn {
+            return [local] + cache.peers
+        }
         var peers: [String: Stats] = [:]
         if syncing {
             let ownKey = Self.kvsPrefix + deviceId
@@ -178,7 +200,7 @@ final class ListeningStatsStore: ObservableObject {
                 }
             }
         }
-        if SettingsStore.shared.syncToDrive {
+        if driveOn {
             let files = (try? FileManager.default.contentsOfDirectory(at: peersDir, includingPropertiesForKeys: nil)) ?? []
             for file in files where file.pathExtension == "json" {
                 // "stats-{deviceId}.json" -> deviceId
@@ -191,7 +213,9 @@ final class ListeningStatsStore: ObservableObject {
                 }
             }
         }
-        return [local] + Array(peers.values)
+        let loaded = Array(peers.values)
+        peerCache = PeerCache(syncingKVS: syncing, driveOn: driveOn, peers: loaded)
+        return [local] + loaded
     }
 
     private func mergedDaily() -> [String: Double] {
