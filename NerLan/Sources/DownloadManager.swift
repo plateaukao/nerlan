@@ -154,12 +154,18 @@ final class DownloadManager: NSObject, ObservableObject {
         Self.existingFile(in: cacheDir, id: episodeId)
     }
 
-    /// Persist a fully-streamed episode under its real extension (so AAC plays
-    /// back correctly). No-op if it's already an explicit download (that copy
-    /// takes precedence and shouldn't be duplicated).
-    func storeCachedAudio(_ data: Data, episodeId: String, ext: String = "mp3") {
-        guard !isDownloaded(episodeId: episodeId) else { return }
-        try? data.write(to: cacheDir.appendingPathComponent("\(episodeId).\(ext)"), options: .atomic)
+    /// Move a fully-streamed temp file into the cache under its real extension
+    /// (so AAC plays back correctly). No-op — and the temp file is discarded —
+    /// if it's already an explicit download (that copy takes precedence and
+    /// shouldn't be duplicated).
+    func storeCachedAudio(fileAt url: URL, episodeId: String, ext: String = "mp3") {
+        guard !isDownloaded(episodeId: episodeId) else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let dest = cacheDir.appendingPathComponent("\(episodeId).\(ext)")
+        try? FileManager.default.removeItem(at: dest)
+        try? FileManager.default.moveItem(at: url, to: dest)
     }
 
     func clearAudioCache() {

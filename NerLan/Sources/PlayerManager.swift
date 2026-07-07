@@ -402,10 +402,14 @@ final class PlayerManager: ObservableObject {
 }
 
 extension PlayerManager: CachingPlayerItemDelegate {
-    nonisolated func cachingPlayerItem(_ item: CachingPlayerItem, didFinishDownloading data: Data) {
+    nonisolated func cachingPlayerItem(_ item: CachingPlayerItem, didFinishDownloadingTo fileURL: URL) {
         Task { @MainActor [weak self] in
-            guard let self, item === self.cachingItem, let id = self.cachingEpisodeId else { return }
-            DownloadManager.shared.storeCachedAudio(data, episodeId: id, ext: self.cachingAudioExt ?? "mp3")
+            guard let self, item === self.cachingItem, let id = self.cachingEpisodeId else {
+                try? FileManager.default.removeItem(at: fileURL)
+                return
+            }
+            DownloadManager.shared.storeCachedAudio(fileAt: fileURL, episodeId: id,
+                                                    ext: self.cachingAudioExt ?? "mp3")
         }
     }
 }
