@@ -1,7 +1,23 @@
 import SwiftUI
 
+/// Receives the background-download wake-up: when the app was killed while a
+/// background URLSession download ran, the system relaunches it and calls
+/// `handleEventsForBackgroundURLSession`. Touching `DownloadManager.shared`
+/// recreates the session under the same identifier, which is what lets its
+/// delegate receive the queued events; the completion handler is stored and
+/// invoked from `urlSessionDidFinishEvents` once they've all been delivered.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        DownloadManager.shared.backgroundCompletionHandler = completionHandler
+    }
+}
+
 @main
 struct NerLanApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()

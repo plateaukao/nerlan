@@ -52,6 +52,55 @@ final class DownloadManager: NSObject, ObservableObject {
 
         let config = URLSessionConfiguration.background(withIdentifier: "com.danielkao.nerlan.downloads")
         session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
+
+        // Reconnect to downloads still running from a previous launch: the
+        // background session survives the process, but the in-memory task map
+        // doesn't — rebuild it (and the spinners) from each task's description.
+        session.getAllTasks { [weak self] running in
+            guard let self else { return }
+            for task in running {
+                guard self.tasks[task.taskIdentifier] == nil,
+                      let target = Self.target(fromDescription: task.taskDescription) else { continue }
+                self.tasks[task.taskIdentifier] = target
+                if case .audio(let record) = target { self.downloading.insert(record.id) }
+            }
+        }
+    }
+
+    /// Called by the app delegate when the system relaunches the app to deliver
+    /// background-download events; invoked once the session has delivered them.
+    var backgroundCompletionHandler: (() -> Void)?
+
+    // MARK: - Task target persistence
+
+    // The taskIdentifier -> TaskTarget map only lives in memory, but background
+    // downloads outlive the process. Each task carries its target in
+    // `taskDescription` (a string the system persists with the task), so a
+    // download that finishes after a relaunch can still be filed correctly
+    // instead of being silently discarded.
+
+    private static func taskDescription(for target: TaskTarget) -> String? {
+        switch target {
+        case .audio(let record):
+            return (try? JSONEncoder().encode(record)).map { "audio:" + $0.base64EncodedString() }
+        case .attachment(let attachment):
+            return (try? JSONEncoder().encode(attachment)).map { "attachment:" + $0.base64EncodedString() }
+        }
+    }
+
+    private static func target(fromDescription desc: String?) -> TaskTarget? {
+        guard let desc else { return nil }
+        if desc.hasPrefix("audio:"),
+           let data = Data(base64Encoded: String(desc.dropFirst("audio:".count))),
+           let record = try? JSONDecoder().decode(EpisodeRecord.self, from: data) {
+            return .audio(record)
+        }
+        if desc.hasPrefix("attachment:"),
+           let data = Data(base64Encoded: String(desc.dropFirst("attachment:".count))),
+           let attachment = try? JSONDecoder().decode(Attachment.self, from: data) {
+            return .attachment(attachment)
+        }
+        return nil
     }
 
     /// Audio file extensions an episode might be stored under: NER is always mp3,
@@ -148,6 +197,7 @@ final class DownloadManager: NSObject, ObservableObject {
         if !isDownloaded(episodeId: record.id), !isDownloading(episodeId: record.id),
            let remote = record.audio.flatMap(URL.init(string:)) {
             let task = session.downloadTask(with: remote)
+            task.taskDescription = Self.taskDescription(for: .audio(record))
             tasks[task.taskIdentifier] = .audio(record)
             downloading.insert(record.id)
             task.resume()
@@ -163,6 +213,7 @@ final class DownloadManager: NSObject, ObservableObject {
                   !tasks.values.contains(where: { if case .attachment(let a) = $0 { return a.id == attachment.id } else { return false } }),
                   let url = attachment.remoteURL else { continue }
             let task = session.downloadTask(with: url)
+            task.taskDescription = Self.taskDescription(for: .attachment(attachment))
             tasks[task.taskIdentifier] = .attachment(attachment)
             task.resume()
         }
@@ -192,7 +243,10 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {
-        guard let target = tasks[downloadTask.taskIdentifier] else { return }
+        // The map covers tasks started this launch; the description covers tasks
+        // that finished after the app was relaunched.
+        guard let target = tasks[downloadTask.taskIdentifier]
+            ?? Self.target(fromDescription: downloadTask.taskDescription) else { return }
         switch target {
         case .audio(let record):
             let dest = audioFileURL(for: record)
@@ -218,9 +272,19 @@ extension DownloadManager: URLSessionDownloadDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard let target = tasks.removeValue(forKey: task.taskIdentifier) else { return }
+        guard let target = tasks.removeValue(forKey: task.taskIdentifier)
+            ?? Self.target(fromDescription: task.taskDescription) else { return }
         if case .audio(let record) = target {
             downloading.remove(record.id)
+        }
+    }
+
+    /// All queued background events have been delivered — tell the system so it
+    /// can take the relaunch's snapshot / suspend the app again.
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        DispatchQueue.main.async { [weak self] in
+            self?.backgroundCompletionHandler?()
+            self?.backgroundCompletionHandler = nil
         }
     }
 }
