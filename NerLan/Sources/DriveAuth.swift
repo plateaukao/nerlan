@@ -39,6 +39,12 @@ final class DriveAuth: NSObject {
     /// sign in through the browser again — the analog of Android's `ReauthRequired`.
     struct ReauthRequired: Error {}
 
+    /// The auth sheet couldn't be presented (e.g. no key window yet), so its
+    /// completion handler will never fire.
+    struct PresentationFailed: LocalizedError {
+        var errorDescription: String? { "無法開啟 Google 登入視窗，請再試一次。" }
+    }
+
     private var cachedToken: String?
     private var cachedExpiry: Date?
     /// Held strongly for the duration of the flow — `ASWebAuthenticationSession`
@@ -82,7 +88,12 @@ final class DriveAuth: NSObject {
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
             self.session = session
-            session.start()
+            // start() returning false means nothing was presented and the
+            // completion handler will never be called — resume with an error,
+            // or the continuation (and Settings' 登入中… spinner) hangs forever.
+            if !session.start() {
+                cont.resume(throwing: PresentationFailed())
+            }
         }
 
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
