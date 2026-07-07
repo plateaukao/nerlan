@@ -188,6 +188,12 @@ final class PlayerManager: ObservableObject {
     /// nothing loaded (the mini player is hidden then anyway).
     func play() {
         guard !isPlaying, player.currentItem != nil else { return }
+        // After the last queue item finishes, the player parks at the end of the
+        // item; play() there produces no audio while the UI flips to "playing".
+        // Restart the episode instead.
+        if clock.duration > 0, clock.currentTime >= clock.duration - 0.5 {
+            seek(to: 0)
+        }
         player.play()
         isPlaying = true
         lastTick = Date()
