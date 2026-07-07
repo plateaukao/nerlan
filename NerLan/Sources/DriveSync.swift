@@ -256,7 +256,8 @@ final class DriveSync: ObservableObject {
                                  driveName: "favorites.json", localURL: favoritesURL) { local, remoteBytes in
             let merged = Self.mergeById(local: try Self.decodeRecords(local, wire: false, file: "favorites.json (local)"),
                                         remote: try Self.decodeRecords(remoteBytes, wire: true, file: "favorites.json")) { $0.id }
-            return (Self.encodeRecords(merged, wire: false), Self.encodeRecords(merged, wire: true))
+            return (Self.encodeRecords(merged, wire: false),
+                    Self.encodeRecords(Self.sortedById(merged) { $0.id }, wire: true))
         }
     }
 
@@ -266,8 +267,9 @@ final class DriveSync: ObservableObject {
                                  driveName: "favorite-programs.json", localURL: programsURL) { local, remoteBytes in
             let merged = Self.mergeById(local: try Self.decodeList(Program.self, local, file: "favorite-programs.json (local)"),
                                         remote: try Self.decodeList(Program.self, remoteBytes, file: "favorite-programs.json")) { $0.programId }
-            let data = (try? JSONEncoder().encode(merged)) ?? Data("[]".utf8)
-            return (data, data)
+            let localData = (try? JSONEncoder().encode(merged)) ?? Data("[]".utf8)
+            let remoteData = (try? JSONEncoder().encode(Self.sortedById(merged) { $0.programId })) ?? Data("[]".utf8)
+            return (localData, remoteData)
         }
     }
 
@@ -343,7 +345,7 @@ final class DriveSync: ObservableObject {
 
         let ledgerBytes = Self.encodeLedger(mergedLedger)
         let feedsLocalBytes = Self.encodeFeeds(subscribed, wire: false)
-        let feedsRemoteBytes = Self.encodeFeeds(subscribed, wire: true)
+        let feedsRemoteBytes = Self.encodeFeeds(Self.sortedById(subscribed) { $0.id }, wire: true)
         var pushed = 0, pulled = 0
         if ledgerBytes != ledgerLocal { try? ledgerBytes.write(to: podcastSubsURL); pulled += 1 }
         if feedsLocalBytes != feedsLocal { try? feedsLocalBytes.write(to: podcastsURL); pulled += 1 }
@@ -437,11 +439,23 @@ final class DriveSync: ObservableObject {
 
     // MARK: - Merge helpers
 
+    /// Union of the two lists keyed by id; local wins on a conflict. Keeps the
+    /// local file's order — favorites are stored in the order the user added
+    /// them — and appends remote-only items at the end, so a pull never
+    /// reshuffles the visible list. The *remote* copy is encoded id-sorted via
+    /// `sortedById` (the canonical order the mirror always used), so devices
+    /// don't ping-pong their differing local orders at each other.
     private nonisolated static func mergeById<T>(local: [T], remote: [T], id: (T) -> String) -> [T] {
-        var map: [String: T] = [:]
-        for item in remote { map[id(item)] = item }
-        for item in local { map[id(item)] = item }   // local wins on conflict
-        return map.values.sorted { id($0) < id($1) }
+        var seen = Set(local.map(id))
+        var out = local
+        for item in remote where seen.insert(id(item)).inserted {
+            out.append(item)
+        }
+        return out
+    }
+
+    private nonisolated static func sortedById<T>(_ items: [T], id: (T) -> String) -> [T] {
+        items.sorted { id($0) < id($1) }
     }
 
     private nonisolated static func mergeLedger(_ a: [String: PodcastSubEntry], _ b: [String: PodcastSubEntry]) -> [String: PodcastSubEntry] {
