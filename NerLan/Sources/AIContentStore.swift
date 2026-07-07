@@ -75,6 +75,14 @@ final class AIContentStore: ObservableObject {
     /// other devices / after reinstall.
     @Published private(set) var records: [String: EpisodeRecord] = [:]
 
+    /// Episode ids with a saved transcript / handout, mirrored from the
+    /// filesystem so `hasTranscript`/`hasHandout` — called per row, per render,
+    /// and per `aiRecords` filter pass — are set lookups instead of file stats.
+    /// Updated inline on save/delete and rebuilt when files change underneath
+    /// us (an iCloud or Drive pull).
+    @Published private(set) var transcriptIds: Set<String> = []
+    @Published private(set) var handoutIds: Set<String> = []
+
     private static let kvsPrefix = "ai-rec-"
     /// Whether to write records through to / adopt them from iCloud KVS.
     private var syncingRecords = false
@@ -93,13 +101,14 @@ final class AIContentStore: ObservableObject {
         try? FileManager.default.createDirectory(at: translationsDir, withIntermediateDirectories: true)
 
         cleanupMalformedLocalContent()
+        refreshContentIds()
         loadIndex()
         backfillIndex()
 
-        // Files pulled from iCloud appear/disappear under us; refresh the
-        // hasTranscript/hasHandout-driven UI when that happens.
+        // Files pulled from iCloud appear/disappear under us; rebuild the id
+        // sets (which republish the hasTranscript/hasHandout-driven UI).
         ICloudSync.shared.onDidPull = { [weak self] in
-            Task { @MainActor in self?.objectWillChange.send() }
+            Task { @MainActor in self?.refreshContentIds() }
         }
         if SettingsStore.shared.syncToICloud { enableICloudSync() }
     }
@@ -182,7 +191,7 @@ final class AIContentStore: ObservableObject {
            let map = try? JSONDecoder().decode([String: EpisodeRecord].self, from: data) {
             records = map
         }
-        objectWillChange.send()
+        refreshContentIds()
     }
 
     /// Build records for content generated before the index stored them, using
@@ -282,8 +291,21 @@ final class AIContentStore: ObservableObject {
     private func cuesURL(_ id: String) -> URL { cuesDir.appendingPathComponent("\(id).json") }
     private func translationURL(_ id: String) -> URL { translationsDir.appendingPathComponent("\(id).json") }
 
-    func hasTranscript(_ id: String) -> Bool { FileManager.default.fileExists(atPath: transcriptURL(id).path) }
-    func hasHandout(_ id: String) -> Bool { FileManager.default.fileExists(atPath: handoutURL(id).path) }
+    func hasTranscript(_ id: String) -> Bool { transcriptIds.contains(id) }
+    func hasHandout(_ id: String) -> Bool { handoutIds.contains(id) }
+
+    /// Rebuild the id sets from the filesystem — the source of truth after a
+    /// sync pull writes/removes content files directly.
+    private func refreshContentIds() {
+        transcriptIds = Self.ids(in: transcriptsDir, ext: "txt")
+        handoutIds = Self.ids(in: handoutsDir, ext: "html")
+    }
+
+    private static func ids(in dir: URL, ext: String) -> Set<String> {
+        let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return Set(items.filter { $0.pathExtension == ext }
+            .map { $0.deletingPathExtension().lastPathComponent })
+    }
 
     /// The saved translation for an episode, if any. Carries its target language
     /// so the transcript screen can tell whether it matches the current setting.
@@ -413,6 +435,8 @@ final class AIContentStore: ObservableObject {
         if syncingRecords { for id in ids { CloudKVStore.shared.remove(Self.kvsPrefix + id) } }
         records.removeAll()
         persistIndex()
+        transcriptIds.removeAll()
+        handoutIds.removeAll()
         jobs.removeAll()
         translationJobs.removeAll()
         partialTranscripts.removeAll()
@@ -437,6 +461,7 @@ final class AIContentStore: ObservableObject {
         }
         let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
         try? FileManager.default.removeItem(at: url)
+        if kind == .transcript { transcriptIds.remove(id) } else { handoutIds.remove(id) }
         if kind == .transcript {
             // The cue + translation sidecars are derived from this transcript, so
             // they go with it (a regenerated transcript may re-segment differently).
@@ -559,6 +584,7 @@ final class AIContentStore: ObservableObject {
             try Task.checkCancellation()
             let text = sentences.joined(separator: "\n")
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
+            transcriptIds.insert(record.id)
 
             // Best effort — no usable timestamps (e.g. a non-whisper model) means no
             // cues file and the transcript simply shows without highlighting.
@@ -652,6 +678,7 @@ final class AIContentStore: ObservableObject {
             try Task.checkCancellation()
             let html = Self.wrapHTML(fragments.joined(separator: "\n"), title: record.title)
             try html.data(using: .utf8)?.write(to: handoutURL(record.id))
+            handoutIds.insert(record.id)
             noteRecord(record)
             if syncOn { ICloudSync.shared.mirrorUp(.handout, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)

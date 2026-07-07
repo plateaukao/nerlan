@@ -13,6 +13,10 @@ final class DownloadManager: NSObject, ObservableObject {
     /// (republishing a fraction on every chunk pegged the main thread and got the
     /// app killed for exceeding the background CPU limit).
     @Published private(set) var downloading: Set<String> = []
+    /// Episode ids with a downloaded audio file, mirroring `audioDir` — so
+    /// `isDownloaded` (hit by every episode row on every render) is a set
+    /// lookup instead of up to 7 `fileExists` stats on the main thread.
+    @Published private(set) var downloadedIds: Set<String> = []
 
     /// What a background download task is fetching: an episode's audio, or one
     /// of its attachments. Attachments piggyback on the audio download so they
@@ -49,6 +53,8 @@ final class DownloadManager: NSObject, ObservableObject {
            let saved = try? JSONDecoder().decode([EpisodeRecord].self, from: data) {
             records = saved
         }
+        let audioFiles = (try? FileManager.default.contentsOfDirectory(at: audioDir, includingPropertiesForKeys: nil)) ?? []
+        downloadedIds = Set(audioFiles.map { $0.deletingPathExtension().lastPathComponent })
 
         let config = URLSessionConfiguration.background(withIdentifier: "com.danielkao.nerlan.downloads")
         session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
@@ -120,7 +126,7 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     func isDownloaded(episodeId: String) -> Bool {
-        localAssetURL(episodeId: episodeId) != nil
+        downloadedIds.contains(episodeId)
     }
 
     func isDownloading(episodeId: String) -> Bool {
@@ -223,6 +229,7 @@ final class DownloadManager: NSObject, ObservableObject {
         if let url = localAssetURL(episodeId: episodeId) {
             try? FileManager.default.removeItem(at: url)
         }
+        downloadedIds.remove(episodeId)
         if let record = records.first(where: { $0.id == episodeId }) {
             for attachment in record.attachments ?? [] {
                 try? FileManager.default.removeItem(at: attachmentFileURL(attachment))
@@ -253,6 +260,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
             try? FileManager.default.removeItem(at: dest)
             do {
                 try FileManager.default.moveItem(at: location, to: dest)
+                downloadedIds.insert(record.id)
                 // An explicit download supersedes any streamed-cache copy.
                 if let cached = cachedAssetURL(episodeId: record.id) {
                     try? FileManager.default.removeItem(at: cached)
