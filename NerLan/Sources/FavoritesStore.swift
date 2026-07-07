@@ -104,7 +104,7 @@ final class FavoritesStore: ObservableObject {
     func enableSync() {
         guard !syncing else { return }
         syncing = true
-        CloudKVStore.shared.observe(self, selector: #selector(kvsChanged))
+        CloudKVStore.shared.observe(self, selector: #selector(kvsChanged(_:)))
         reconcile()
         CloudKVStore.shared.synchronize()
     }
@@ -131,8 +131,22 @@ final class FavoritesStore: ObservableObject {
         adoptFromKVS()
     }
 
-    @objc private func kvsChanged() {
-        DispatchQueue.main.async { [weak self] in self?.adoptFromKVS() }
+    @objc private func kvsChanged(_ note: Notification) {
+        let reason = note.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
+            ?? NSUbiquitousKeyValueStoreServerChange
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            switch reason {
+            case NSUbiquitousKeyValueStoreAccountChange, NSUbiquitousKeyValueStoreInitialSyncChange:
+                // The system replaced the store's contents (iCloud account switch,
+                // or the first sync after a reinstall) — possibly with an empty
+                // set. Adopting that blindly would wipe every local favorite, so
+                // re-push local ones first and adopt the union instead.
+                self.reconcile()
+            default:
+                self.adoptFromKVS()
+            }
+        }
     }
 
     /// KVS is authoritative for favorites (they have no file backing), so a
