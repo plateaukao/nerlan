@@ -95,11 +95,17 @@ final class PlayerManager: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.clock.currentTime = time.seconds
-                if let d = self.player.currentItem?.duration.seconds, d.isFinite {
+                if let d = self.player.currentItem?.duration.seconds, d.isFinite,
+                   d != self.clock.duration {
                     self.clock.duration = d
+                    // Duration just became known (or was re-estimated): push one
+                    // now-playing update so the lock screen learns the length.
+                    // Elapsed time needs no per-tick pushes — the system
+                    // extrapolates it from the last update and the rate, so
+                    // updates happen only on play/pause/seek/rate/track changes.
+                    self.updateNowPlayingElapsed()
                 }
                 self.accumulateListening()
-                self.updateNowPlayingElapsed()
             }
         }
     }
