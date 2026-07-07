@@ -132,12 +132,15 @@ final class AIContentStore: ObservableObject {
     /// launch when enabled and when the user flips the toggle on.
     func enableICloudSync() {
         ICloudSync.shared.start()
+        // Collect everything into one batch so ICloudSync scans the container
+        // root once, not once per artifact.
+        var batch: [(kind: ICloudSync.Kind, id: String, displayName: String?)] = []
         for kind in [Kind.transcript, .handout] {
             let dir = kind == .transcript ? transcriptsDir : handoutsDir
             let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for file in files where file.pathExtension == cloudKind(kind).localExt {
                 let id = file.deletingPathExtension().lastPathComponent
-                ICloudSync.shared.mirrorUp(cloudKind(kind), id: id, displayName: records[id].map(Self.displayName))
+                batch.append((cloudKind(kind), id, records[id].map(Self.displayName)))
             }
         }
         // Cue + translation sidecars sync as their own ICloudSync kinds (neither
@@ -146,9 +149,10 @@ final class AIContentStore: ObservableObject {
             let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for file in files where file.pathExtension == "json" {
                 let id = file.deletingPathExtension().lastPathComponent
-                ICloudSync.shared.mirrorUp(kind, id: id, displayName: records[id].map(Self.displayName))
+                batch.append((kind, id, records[id].map(Self.displayName)))
             }
         }
+        ICloudSync.shared.mirrorUpBatch(batch)
         enableRecordSync()
     }
 

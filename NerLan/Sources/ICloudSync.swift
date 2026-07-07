@@ -101,31 +101,55 @@ final class ICloudSync {
     /// Copy one local artifact up into its episode folder, creating the folder
     /// (with a readable name) if it doesn't exist yet.
     func mirrorUp(_ kind: Kind, id: String, displayName: String?) {
+        mirrorUpBatch([(kind, id, displayName)])
+    }
+
+    /// `mirrorUp` for many artifacts in one pass. The id→folder map is built
+    /// from a single container-root scan and reused for every item — the
+    /// launch-time bulk upload used to re-list the root (and `resourceValues`
+    /// every entry) once per artifact, i.e. O(artifacts × folders) through the
+    /// iCloud daemon just to conclude everything was already uploaded.
+    func mirrorUpBatch(_ items: [(kind: Kind, id: String, displayName: String?)]) {
         queue.async {
             guard let root = self.cloudRootLocked() else { return }
-            let source = self.localFile(kind, id)
-            guard self.fm.fileExists(atPath: source.path) else { return }
-            let existingFolder = self.episodeFolderLocked(root: root, id: id)
-            // Content is write-once: if the cloud already has this artifact (as a
-            // real file or a not-yet-downloaded ".<name>.icloud" placeholder),
-            // don't re-upload it. Re-replacing on every launch is what spawned the
-            // "transcript 2.txt" conflict duplicates. A changed artifact (e.g. a
-            // re-translation) routes through `removeUp` first, so the cloud copy is
-            // gone here and this proceeds to upload the new one.
-            if let folder = existingFolder, self.cloudArtifactExists(folder: folder, kind: kind) {
-                return
-            }
-            let folder = existingFolder
-                ?? root.appendingPathComponent(self.folderName(displayName: displayName, id: id), isDirectory: true)
-            try? self.fm.createDirectory(at: folder, withIntermediateDirectories: true)
-            let dest = folder.appendingPathComponent(kind.cloudFile)
-            let coordinator = NSFileCoordinator()
-            var err: NSError?
-            coordinator.coordinate(writingItemAt: dest, options: .forReplacing, error: &err) { url in
-                try? self.fm.removeItem(at: url)
-                try? self.fm.copyItem(at: source, to: url)
+            var folders = self.episodeFoldersLocked(root: root)
+            for item in items {
+                let source = self.localFile(item.kind, item.id)
+                guard self.fm.fileExists(atPath: source.path) else { continue }
+                let existingFolder = folders[item.id]
+                // Content is write-once: if the cloud already has this artifact (as a
+                // real file or a not-yet-downloaded ".<name>.icloud" placeholder),
+                // don't re-upload it. Re-replacing on every launch is what spawned the
+                // "transcript 2.txt" conflict duplicates. A changed artifact (e.g. a
+                // re-translation) routes through `removeUp` first, so the cloud copy is
+                // gone here and this proceeds to upload the new one.
+                if let folder = existingFolder, self.cloudArtifactExists(folder: folder, kind: item.kind) {
+                    continue
+                }
+                let folder = existingFolder
+                    ?? root.appendingPathComponent(self.folderName(displayName: item.displayName, id: item.id), isDirectory: true)
+                folders[item.id] = folder   // later artifacts of this episode reuse it
+                try? self.fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                let dest = folder.appendingPathComponent(item.kind.cloudFile)
+                let coordinator = NSFileCoordinator()
+                var err: NSError?
+                coordinator.coordinate(writingItemAt: dest, options: .forReplacing, error: &err) { url in
+                    try? self.fm.removeItem(at: url)
+                    try? self.fm.copyItem(at: source, to: url)
+                }
             }
         }
+    }
+
+    /// Every episode folder in the container, keyed by episode id — one scan.
+    private func episodeFoldersLocked(root: URL) -> [String: URL] {
+        var out: [String: URL] = [:]
+        let items = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        for item in items {
+            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDir, let id = parsedId(fromFolderName: item.lastPathComponent) { out[id] = item }
+        }
+        return out
     }
 
     /// Whether `folder` already holds this `kind`'s artifact in iCloud — either the
