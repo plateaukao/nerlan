@@ -33,8 +33,11 @@ struct FavoritesView: View {
                                     }
                                 }
                                 .onDelete { offsets in
-                                    for i in offsets {
-                                        favorites.toggle(program: favorites.programs[i])
+                                    // Snapshot first: toggling mutates the live
+                                    // array, which would shift later offsets.
+                                    let doomed = offsets.map { favorites.programs[$0] }
+                                    for program in doomed {
+                                        favorites.toggle(program: program)
                                     }
                                 }
                             }
