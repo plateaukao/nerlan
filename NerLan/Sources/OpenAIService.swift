@@ -96,31 +96,15 @@ enum OpenAIService {
         guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
         let wantSegments = supportsSegments(model: config.model)
 
-        let boundary = "Boundary-\(UUID().uuidString)"
-        var req = URLRequest(url: config.baseURL.appendingPathComponent("audio/transcriptions"))
-        req.httpMethod = "POST"
-        if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
         let fileData = try Data(contentsOf: fileURL)
-        var body = Data()
-        func field(_ name: String, _ value: String) {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(value)\r\n".data(using: .utf8)!)
+        let (req, body) = transcriptionRequest(config: config) { form in
+            form.field("model", config.model)
+            form.field("response_format", wantSegments ? "verbose_json" : "text")
+            if let language, !language.isEmpty { form.field("language", language) }
+            if let prompt, !prompt.isEmpty { form.field("prompt", prompt) }
+            form.file("file", filename: fileURL.lastPathComponent,
+                      contentType: "application/octet-stream", data: fileData)
         }
-        field("model", config.model)
-        field("response_format", wantSegments ? "verbose_json" : "text")
-        if let language, !language.isEmpty { field("language", language) }
-        if let prompt, !prompt.isEmpty { field("prompt", prompt) }
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\n"
-            .data(using: .utf8)!)
-        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-
         let (data, response) = try await session.upload(for: req, from: body)
         try check(response, data)
 
@@ -152,29 +136,55 @@ enum OpenAIService {
     /// unknown model → server 404) so the UI can show exactly what's wrong.
     static func verifyTranscription(config: Config) async throws {
         guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
-        let boundary = "Boundary-\(UUID().uuidString)"
-        var req = URLRequest(url: config.baseURL.appendingPathComponent("audio/transcriptions"))
-        req.httpMethod = "POST"
-        if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let (req, body) = transcriptionRequest(config: config) { form in
+            form.field("model", config.model)
+            form.field("response_format", "text")
+            form.file("file", filename: "probe.wav", contentType: "audio/wav", data: silentWAV())
+        }
+        let (data, response) = try await session.upload(for: req, from: body)
+        try check(response, data)
+    }
 
-        var body = Data()
-        func field(_ name: String, _ value: String) {
+    // MARK: - Multipart plumbing (shared by transcribe + verifyTranscription)
+
+    /// Accumulates a multipart/form-data body.
+    private struct MultipartForm {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        private(set) var body = Data()
+
+        mutating func field(_ name: String, _ value: String) {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
             body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
             body.append("\(value)\r\n".data(using: .utf8)!)
         }
-        field("model", config.model)
-        field("response_format", "text")
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"probe.wav\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
-        body.append(silentWAV())
-        body.append("\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        let (data, response) = try await session.upload(for: req, from: body)
-        try check(response, data)
+        mutating func file(_ name: String, filename: String, contentType: String, data: Data) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n"
+                .data(using: .utf8)!)
+            body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+            body.append(data)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        mutating func finalize() -> Data {
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+            return body
+        }
+    }
+
+    /// A ready-to-send POST /audio/transcriptions request plus its multipart
+    /// body, with auth and content-type headers set from `config`.
+    private static func transcriptionRequest(
+        config: Config, buildForm: (inout MultipartForm) -> Void
+    ) -> (URLRequest, Data) {
+        var form = MultipartForm()
+        buildForm(&form)
+        var req = URLRequest(url: config.baseURL.appendingPathComponent("audio/transcriptions"))
+        req.httpMethod = "POST"
+        if !config.apiKey.isEmpty { req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization") }
+        req.setValue("multipart/form-data; boundary=\(form.boundary)", forHTTPHeaderField: "Content-Type")
+        return (req, form.finalize())
     }
 
     /// Probe the chat endpoint: a one-token round-trip. Reuses `chat`, which

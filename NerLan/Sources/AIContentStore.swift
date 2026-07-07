@@ -191,10 +191,7 @@ final class AIContentStore: ObservableObject {
     /// and refresh the content-file-driven UI (a pull may have added transcript or
     /// handout files even when the index didn't change).
     func reloadIndex() {
-        if let data = try? Data(contentsOf: indexURL),
-           let map = try? JSONDecoder().decode([String: EpisodeRecord].self, from: data) {
-            records = map
-        }
+        loadIndex()
         refreshContentIds()
     }
 
