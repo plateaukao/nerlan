@@ -240,6 +240,17 @@ final class PlayerManager: ObservableObject {
         updateNowPlayingElapsed()
     }
 
+    /// Frame-accurate seek for the sentence loop: the default seek's unbounded
+    /// tolerance can land noticeably off the cue, clipping the start of the
+    /// sentence being shadowed or pre-rolling the previous one. The scrubber
+    /// and skip buttons keep the coarse (faster) `seek(to:)`.
+    private func seekPrecisely(to seconds: Double) {
+        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero)
+        clock.currentTime = seconds
+        updateNowPlayingElapsed()
+    }
+
     func skip(_ delta: Double) {
         seek(to: max(0, min(clock.currentTime + delta, clock.duration > 0 ? clock.duration : .greatestFiniteMagnitude)))
     }
@@ -264,7 +275,7 @@ final class PlayerManager: ObservableObject {
         ) { [weak self] in
             Task { @MainActor [weak self] in self?.loopBoundaryReached(from: from) }
         }
-        seek(to: from)
+        seekPrecisely(to: from)
         if !isPlaying {
             try? AVAudioSession.sharedInstance().setActive(true)
             player.play()
@@ -279,7 +290,7 @@ final class PlayerManager: ObservableObject {
         if let remaining = loopRemaining {
             if remaining > 1 {
                 loopRemaining = remaining - 1
-                seek(to: from)
+                seekPrecisely(to: from)
             } else {
                 // Finite count done: stop on the sentence and signal the shadowing
                 // UI, which auto-starts recording the learner's turn.
@@ -288,7 +299,7 @@ final class PlayerManager: ObservableObject {
                 loopFinishedSignal += 1
             }
         } else {
-            seek(to: from)
+            seekPrecisely(to: from)
         }
     }
 
