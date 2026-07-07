@@ -34,13 +34,21 @@ enum SpeechAudioExporter {
         }
         let chunkCount = Int((duration / maxChunkSeconds).rounded(.up))
         var urls: [URL] = []
-        for i in 0..<chunkCount {
-            let start = Double(i) * maxChunkSeconds
-            let length = min(maxChunkSeconds, duration - start)
-            let range = CMTimeRange(
-                start: CMTime(seconds: start, preferredTimescale: 600),
-                duration: CMTime(seconds: length, preferredTimescale: 600))
-            urls.append(try await transcode(sourceURL, timeRange: range))
+        do {
+            for i in 0..<chunkCount {
+                let start = Double(i) * maxChunkSeconds
+                let length = min(maxChunkSeconds, duration - start)
+                let range = CMTimeRange(
+                    start: CMTime(seconds: start, preferredTimescale: 600),
+                    duration: CMTime(seconds: length, preferredTimescale: 600))
+                urls.append(try await transcode(sourceURL, timeRange: range))
+            }
+        } catch {
+            // A failing later chunk must not strand the earlier ones: the caller
+            // only ever sees the [sourceURL] fallback, so these temp files would
+            // otherwise pile up (~5 MB per chunk) until the OS purges them.
+            for url in urls { try? FileManager.default.removeItem(at: url) }
+            throw error
         }
         return urls
     }
@@ -79,11 +87,17 @@ enum SpeechAudioExporter {
                 AVEncoderBitRateKey: 32_000,
             ])
         writerInput.expectsMediaDataInRealTime = false
-        guard writer.canAdd(writerInput) else { throw Failure.cannotWrite }
+        // Once the writer exists its output file may too; delete it on any
+        // failure below so an aborted transcode leaves nothing in temp.
+        func fail(_ error: Error) -> Error {
+            try? FileManager.default.removeItem(at: outputURL)
+            return error
+        }
+        guard writer.canAdd(writerInput) else { throw fail(Failure.cannotWrite) }
         writer.add(writerInput)
 
-        guard reader.startReading() else { throw reader.error ?? Failure.cannotRead }
-        guard writer.startWriting() else { throw writer.error ?? Failure.cannotWrite }
+        guard reader.startReading() else { throw fail(reader.error ?? Failure.cannotRead) }
+        guard writer.startWriting() else { throw fail(writer.error ?? Failure.cannotWrite) }
         // Trimmed reads yield buffers timestamped at the chunk's source time, so
         // start the session there (we only ever append in-range samples, so the
         // chunk file holds just that segment — no leading silence).
@@ -113,7 +127,7 @@ enum SpeechAudioExporter {
         }
 
         guard writer.status == .completed, reader.status != .failed else {
-            throw writer.error ?? reader.error ?? Failure.cannotWrite
+            throw fail(writer.error ?? reader.error ?? Failure.cannotWrite)
         }
         return outputURL
     }
