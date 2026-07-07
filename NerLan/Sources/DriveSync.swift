@@ -539,23 +539,35 @@ final class DriveSync: ObservableObject {
     // MARK: - Drive REST v3 (over URLSession)
 
     private struct DriveFile: Decodable { let id: String; let name: String; let modifiedTime: String? }
-    private struct FileList: Decodable { let files: [DriveFile] }
+    private struct FileList: Decodable { let files: [DriveFile]; let nextPageToken: String? }
     private struct UploadMeta: Encodable { let name: String; let parents: [String] }
     private struct UploadResult: Decodable { let id: String?; let modifiedTime: String? }
 
     private nonisolated func listFiles(token: String) async throws -> [String: DriveFile] {
-        var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
-        comps.queryItems = [
-            .init(name: "spaces", value: "appDataFolder"),
-            .init(name: "fields", value: "files(id,name,modifiedTime)"),
-            .init(name: "pageSize", value: "1000"),
-        ]
-        var req = URLRequest(url: comps.url!)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try Self.check(resp, "list")
-        let list = try JSONDecoder().decode(FileList.self, from: data)
-        return Dictionary(list.files.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        // Follow nextPageToken to the end: 4 content files per episode add up,
+        // and any file beyond an unfollowed first page would look "remote-
+        // missing" — re-uploaded as a same-named duplicate on every sync.
+        var files: [DriveFile] = []
+        var pageToken: String?
+        repeat {
+            var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
+            comps.queryItems = [
+                .init(name: "spaces", value: "appDataFolder"),
+                .init(name: "fields", value: "nextPageToken,files(id,name,modifiedTime)"),
+                .init(name: "pageSize", value: "1000"),
+            ]
+            if let pageToken {
+                comps.queryItems?.append(.init(name: "pageToken", value: pageToken))
+            }
+            var req = URLRequest(url: comps.url!)
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            try Self.check(resp, "list")
+            let list = try JSONDecoder().decode(FileList.self, from: data)
+            files.append(contentsOf: list.files)
+            pageToken = list.nextPageToken
+        } while pageToken != nil
+        return Dictionary(files.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private nonisolated func download(token: String, id: String) async throws -> Data {
