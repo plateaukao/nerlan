@@ -328,15 +328,25 @@ final class AIContentStore: ObservableObject {
     /// instead of downloading/transcribing (and paying for) the episode twice.
     private var transcriptTasks: [String: Task<String?, Never>] = [:]
 
+    /// Handout / translation jobs in flight, so delete/clearAll can cancel them —
+    /// otherwise a job finishing after the delete rewrites the file and the
+    /// "cleared" content resurrects (while still costing OpenAI credit).
+    private var handoutTasks: [String: Task<Void, Never>] = [:]
+    private var translationTasks: [String: Task<Void, Never>] = [:]
+
     /// The running transcription for an episode, starting one if needed.
     private func transcriptTask(_ record: EpisodeRecord) -> Task<String?, Never> {
         if let running = transcriptTasks[record.id] { return running }
-        let task = Task { [weak self] () -> String? in
+        let id = record.id
+        var task: Task<String?, Never>!
+        task = Task { [weak self] () -> String? in
             let text = await self?.runTranscript(record)
-            self?.transcriptTasks.removeValue(forKey: record.id)
+            // Only drop our own registration — a cancelled run must not remove
+            // the replacement task a regenerate may have installed meanwhile.
+            if let self, self.transcriptTasks[id] == task { self.transcriptTasks.removeValue(forKey: id) }
             return text
         }
-        transcriptTasks[record.id] = task
+        transcriptTasks[id] = task
         return task
     }
 
@@ -359,7 +369,13 @@ final class AIContentStore: ObservableObject {
     /// episode's transcript. No-ops while a job is already running for it.
     func translate(_ record: EpisodeRecord) {
         if case .running = translationJobs[record.id] { return }
-        Task { await runTranslation(record) }
+        let id = record.id
+        var task: Task<Void, Never>!
+        task = Task { [weak self] in
+            await self?.runTranslation(record)
+            if let self, self.translationTasks[id] == task { self.translationTasks.removeValue(forKey: id) }
+        }
+        translationTasks[id] = task
     }
 
     func processHandout(_ record: EpisodeRecord) {
@@ -370,10 +386,24 @@ final class AIContentStore: ObservableObject {
             jobs.removeValue(forKey: key(.handout, record.id))
         }
         guard jobs[key(.handout, record.id)] == nil, !hasHandout(record.id) else { return }
-        Task { await runHandout(record) }
+        let id = record.id
+        var task: Task<Void, Never>!
+        task = Task { [weak self] in
+            await self?.runHandout(record)
+            if let self, self.handoutTasks[id] == task { self.handoutTasks.removeValue(forKey: id) }
+        }
+        handoutTasks[id] = task
     }
 
     func clearAll() {
+        // Stop every in-flight generation first: a job that outlived the clear
+        // would rewrite its file, re-note the record, and resurrect the content.
+        for task in transcriptTasks.values { task.cancel() }
+        for task in handoutTasks.values { task.cancel() }
+        for task in translationTasks.values { task.cancel() }
+        transcriptTasks.removeAll()
+        handoutTasks.removeAll()
+        translationTasks.removeAll()
         let ids = Array(records.keys)
         for dir in [transcriptsDir, handoutsDir, cuesDir, translationsDir] {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
@@ -396,6 +426,15 @@ final class AIContentStore: ObservableObject {
     /// the action button drops back to its idle state.
     func delete(_ kind: Kind, _ id: String) {
         objectWillChange.send()
+        // Stop the matching in-flight generation so it can't finish after the
+        // delete and rewrite the file. A deleted transcript also takes its
+        // translation job with it (the sidecar files below go the same way).
+        if kind == .transcript {
+            transcriptTasks.removeValue(forKey: id)?.cancel()
+            translationTasks.removeValue(forKey: id)?.cancel()
+        } else {
+            handoutTasks.removeValue(forKey: id)?.cancel()
+        }
         let url = kind == .transcript ? transcriptURL(id) : handoutURL(id)
         try? FileManager.default.removeItem(at: url)
         if kind == .transcript {
@@ -471,6 +510,7 @@ final class AIContentStore: ObservableObject {
             // highlighting rather than with cues that drift out of alignment.
             var cuesAligned = true
             for (i, chunk) in chunks.enumerated() {
+                try Task.checkCancellation()
                 jobs[k] = .running(multi ? "轉錄中…（\(i + 1)/\(chunks.count)）" : "轉錄中…")
                 let result = try await OpenAIService.transcribe(
                     fileURL: chunk, config: txConfig,
@@ -516,6 +556,7 @@ final class AIContentStore: ObservableObject {
                 }
             }
 
+            try Task.checkCancellation()
             let text = sentences.joined(separator: "\n")
             try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
 
@@ -543,7 +584,9 @@ final class AIContentStore: ObservableObject {
             // Nothing was saved, so drop any streamed partial; the button shows failed.
             partialTranscripts.removeValue(forKey: record.id)
             autoOpenTranscriptIds.remove(record.id)
-            jobs[k] = .failed(error.localizedDescription)
+            // A cancelled run (delete/clearAll) already had its job state cleared —
+            // writing .failed would leave a phantom error on the button.
+            if !Task.isCancelled { jobs[k] = .failed(error.localizedDescription) }
             return nil
         }
     }
@@ -595,6 +638,7 @@ final class AIContentStore: ObservableObject {
             let chatConfig = settings.chatConfig
             var fragments: [String] = []
             for (i, segment) in segments.enumerated() {
+                try Task.checkCancellation()
                 jobs[k] = segments.count > 1
                     ? .running("生成講義中…（\(i + 1)/\(segments.count)）")
                     : .running("生成講義中…")
@@ -605,13 +649,14 @@ final class AIContentStore: ObservableObject {
                     transcript: segment, record: record, partTitle: partTitle,
                     config: chatConfig))
             }
+            try Task.checkCancellation()
             let html = Self.wrapHTML(fragments.joined(separator: "\n"), title: record.title)
             try html.data(using: .utf8)?.write(to: handoutURL(record.id))
             noteRecord(record)
             if syncOn { ICloudSync.shared.mirrorUp(.handout, id: record.id, displayName: Self.displayName(record)) }
             jobs.removeValue(forKey: k)
         } catch {
-            jobs[k] = .failed(error.localizedDescription)
+            if !Task.isCancelled { jobs[k] = .failed(error.localizedDescription) }
         }
     }
 
@@ -636,6 +681,7 @@ final class AIContentStore: ObservableObject {
                 onPartial: { [weak self] soFar in
                     self?.partialTranslations[id] = StoredTranslation(language: language, sentences: soFar)
                 })
+            try Task.checkCancellation()
             let stored = StoredTranslation(language: language, sentences: translated)
             try JSONEncoder().encode(stored).write(to: translationURL(id))
             noteRecord(record)
@@ -647,7 +693,7 @@ final class AIContentStore: ObservableObject {
             translationJobs.removeValue(forKey: id)   // publishes → transcript screen reloads
         } catch {
             partialTranslations.removeValue(forKey: id)
-            translationJobs[id] = .failed(error.localizedDescription)
+            if !Task.isCancelled { translationJobs[id] = .failed(error.localizedDescription) }
         }
     }
 
