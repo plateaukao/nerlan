@@ -30,10 +30,14 @@ struct ProgramDetailView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else {
+                    // One shared queue snapshot for all rows — building it per
+                    // row made each of n rows map the whole n-episode list
+                    // (n² records per List render, with n in the hundreds).
+                    let queue = episodes.map(record(for:))
                     ForEach(episodes) { episode in
                         EpisodeRow(episode: episode,
                                    record: record(for: episode),
-                                   queue: episodes.map(record(for:)))
+                                   queue: queue)
                             .onAppear {
                                 // infinite scroll: fetch the next page near the end
                                 if episode.id == episodes.last?.id {
