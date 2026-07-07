@@ -22,11 +22,5 @@ struct PodcastFeed: Codable, Identifiable, Hashable {
 
     /// Description often arrives as HTML; strip tags for display (mirrors
     /// `Program.descriptionText`).
-    var descriptionText: String {
-        guard let description else { return "" }
-        return description
-            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+    var descriptionText: String { description?.strippedHTML ?? "" }
 }

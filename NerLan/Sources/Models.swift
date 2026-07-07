@@ -84,6 +84,17 @@ struct StoredTranslation: Codable, Equatable {
     let sentences: [String]
 }
 
+extension String {
+    /// Plain text from an HTML-ish API/RSS description: tags stripped, &nbsp;
+    /// collapsed, surrounding whitespace trimmed. Shared by `Program` and
+    /// `PodcastFeed`.
+    var strippedHTML: String {
+        replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 // MARK: - Programs
 
 struct Program: Codable, Identifiable, Hashable {
@@ -100,13 +111,7 @@ struct Program: Codable, Identifiable, Hashable {
     var coverURL: URL? { ChannelPlusAPI.imageURL(image?.imageRef) }
 
     /// Description comes back as HTML; strip tags for display.
-    var descriptionText: String {
-        guard let description else { return "" }
-        return description
-            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+    var descriptionText: String { description?.strippedHTML ?? "" }
 }
 
 /// Programs grouped by language for the browse list.

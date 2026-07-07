@@ -183,7 +183,7 @@ struct RecordRow: View {
                 .buttonStyle(.borderless)
             }
 
-            if showDownload { downloadButton }
+            if showDownload { DownloadStateButton(record: record) }
 
             if !record.pdfAttachments.isEmpty {
                 Button {
@@ -219,10 +219,19 @@ struct RecordRow: View {
         }
     }
 
-    /// Mirrors `EpisodeRow`'s download affordance: checkmark when downloaded,
-    /// spinner while in flight, otherwise a download button.
-    @ViewBuilder
-    private var downloadButton: some View {
+}
+
+/// Download affordance shared by `RecordRow` and the NER episode list
+/// (`EpisodeRow`): a green check once downloaded, a spinner while in flight,
+/// otherwise a download button.
+struct DownloadStateButton: View {
+    let record: EpisodeRecord
+    /// The NER list disables the button for unplayable rows (no audio URL).
+    var enabled: Bool = true
+
+    @EnvironmentObject var downloads: DownloadManager
+
+    var body: some View {
         if downloads.isDownloaded(episodeId: record.id) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -236,6 +245,7 @@ struct RecordRow: View {
                 Image(systemName: "arrow.down.circle")
             }
             .buttonStyle(.borderless)
+            .disabled(!enabled)
         }
     }
 }

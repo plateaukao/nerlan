@@ -235,26 +235,7 @@ struct EpisodeRow: View {
             }
             .buttonStyle(.borderless)
 
-            downloadButton
-        }
-    }
-
-    @ViewBuilder
-    private var downloadButton: some View {
-        if downloads.isDownloaded(episodeId: episode.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        } else if downloads.isDownloading(episodeId: episode.id) {
-            ProgressView()
-                .progressViewStyle(.circular)
-        } else {
-            Button {
-                downloads.download(record)
-            } label: {
-                Image(systemName: "arrow.down.circle")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!playable)
+            DownloadStateButton(record: record, enabled: playable)
         }
     }
 }
