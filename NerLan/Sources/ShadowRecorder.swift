@@ -74,7 +74,13 @@ final class ShadowRecorder: NSObject, ObservableObject {
         }
         rec.delegate = self
         recorder = rec
-        rec.record()
+        // record() can fail at the hardware level (mic grabbed elsewhere);
+        // reporting "recording" then would wedge the UI and the audio session.
+        guard rec.record() else {
+            recorder = nil
+            PlayerManager.shared.endRecordingSession()
+            return false
+        }
         isRecording = true
         return true
     }
@@ -85,8 +91,10 @@ final class ShadowRecorder: NSObject, ObservableObject {
         guard isRecording else { return }
         let recordedURL = recorder?.url
         autoPlayURL = thenPlay ? recordedURL : nil
-        recorder?.stop()   // finalizes the file; the delegate fires when it's ready
-        recorder = nil
+        // stop() finalizes the file and the delegate fires when it's ready.
+        // Keep the reference until then — releasing it here can deallocate the
+        // recorder before the callback, silently dropping the auto-play.
+        recorder?.stop()
         isRecording = false
         lastRecordedKey = recordedURL?.deletingPathExtension().lastPathComponent
         PlayerManager.shared.endRecordingSession()
@@ -124,6 +132,8 @@ extension ShadowRecorder: AVAudioRecorderDelegate, AVAudioPlayerDelegate {
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder,
                                                      successfully flag: Bool) {
         Task { @MainActor in
+            // Release only our own instance — a new take may have started.
+            if self.recorder === recorder { self.recorder = nil }
             self.isRecording = false
             if let url = self.autoPlayURL {
                 self.autoPlayURL = nil
