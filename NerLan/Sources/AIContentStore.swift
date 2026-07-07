@@ -320,7 +320,24 @@ final class AIContentStore: ObservableObject {
 
     func processTranscript(_ record: EpisodeRecord) {
         guard jobs[key(.transcript, record.id)] == nil, !hasTranscript(record.id) else { return }
-        Task { await runTranscript(record) }
+        _ = transcriptTask(record)
+    }
+
+    /// In-flight transcriptions by episode id, so concurrent callers — the
+    /// transcript button and a handout that needs the transcript — share one job
+    /// instead of downloading/transcribing (and paying for) the episode twice.
+    private var transcriptTasks: [String: Task<String?, Never>] = [:]
+
+    /// The running transcription for an episode, starting one if needed.
+    private func transcriptTask(_ record: EpisodeRecord) -> Task<String?, Never> {
+        if let running = transcriptTasks[record.id] { return running }
+        let task = Task { [weak self] () -> String? in
+            let text = await self?.runTranscript(record)
+            self?.transcriptTasks.removeValue(forKey: record.id)
+            return text
+        }
+        transcriptTasks[record.id] = task
+        return task
     }
 
     /// Start a transcript (if needed) and open the viewer as soon as content is
@@ -557,7 +574,8 @@ final class AIContentStore: ObservableObject {
         let settings = SettingsStore.shared
         jobs[k] = .running("準備逐字稿…")
         do {
-            guard let transcript = await runTranscript(record) else {
+            // Join any transcription already in flight rather than starting a second.
+            guard let transcript = await transcriptTask(record).value else {
                 if case .failed(let m)? = jobs[key(.transcript, record.id)] {
                     throw OpenAIService.APIError.server(m)
                 }
