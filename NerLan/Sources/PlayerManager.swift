@@ -371,9 +371,15 @@ final class PlayerManager: ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
 
         if let coverString = current.coverURL, let url = URL(string: coverString) {
-            Task {
-                guard let (data, _) = try? await URLSession.shared.data(from: url),
-                      let image = UIImage(data: data) else { return }
+            let episodeId = current.id
+            Task { [weak self] in
+                // Same two-tier cache the list rows use — sequential episodes of
+                // one program share a cover, so this is usually a memory hit
+                // instead of a fresh download per episode.
+                guard let image = await CoverImageCache.shared.image(for: url) else { return }
+                // Skipped to another episode while the fetch was in flight?
+                // Don't stamp the old episode's cover onto the new one.
+                guard let self, self.current?.id == episodeId else { return }
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
