@@ -24,33 +24,9 @@ import Foundation
 final class ICloudSync {
     static let shared = ICloudSync()
 
-    enum Kind: CaseIterable {
-        case transcript, handout, cues, translation
-        var localSub: String {
-            switch self {
-            case .transcript: return "transcripts"
-            case .handout: return "handouts"
-            case .cues: return "cues"
-            case .translation: return "translations"
-            }
-        }
-        var localExt: String {
-            switch self {
-            case .transcript: return "txt"
-            case .handout: return "html"
-            case .cues: return "json"
-            case .translation: return "json"
-            }
-        }
-        var cloudFile: String {
-            switch self {
-            case .transcript: return "transcript.txt"
-            case .handout: return "handout.html"
-            case .cues: return "cues.json"
-            case .translation: return "translation.json"
-            }
-        }
-    }
+    /// The artifact kinds and their names live in `AIContentKind`, shared with
+    /// `AIContentStore` and `DriveSync` so the three layers can't drift.
+    typealias Kind = AIContentKind
 
     /// Fired on the main thread after files are pulled down, so stores can
     /// refresh their `hasTranscript`/`hasHandout`-driven UI.
@@ -316,7 +292,7 @@ final class ICloudSync {
             if start < end { return String(name[start..<end]) }
             return nil
         }
-        if !name.isEmpty, name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) {
+        if AIContentKind.isValidEpisodeId(name) {
             return name
         }
         return nil

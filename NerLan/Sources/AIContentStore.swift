@@ -217,13 +217,11 @@ final class AIContentStore: ObservableObject {
     /// letters, digits and hyphens only, so anything containing a space, bracket or
     /// other character is junk. Removing it also stops it being mirrored back up.
     private func cleanupMalformedLocalContent() {
-        let allowed = CharacterSet(charactersIn:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-")
         for dir in [transcriptsDir, handoutsDir, cuesDir, translationsDir] {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             for item in items {
                 let id = item.deletingPathExtension().lastPathComponent
-                if id.isEmpty || id.rangeOfCharacter(from: allowed.inverted) != nil {
+                if !AIContentKind.isValidEpisodeId(id) {
                     try? FileManager.default.removeItem(at: item)
                 }
             }

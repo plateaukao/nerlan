@@ -386,55 +386,38 @@ final class DriveSync: ObservableObject {
 
     // MARK: - Content-file mapping (drive name <-> local ai/ path)
 
+    // Kind names/extensions/mime types come from AIContentKind — the single
+    // source of truth shared with AIContentStore and ICloudSync.
+
     private nonisolated func contentFiles() -> [String: URL] {
         var out: [String: URL] = [:]
-        let kinds: [(sub: String, prefix: String, ext: String)] = [
-            ("transcripts", "transcript-", "txt"),
-            ("handouts", "handout-", "html"),
-            ("cues", "cues-", "json"),
-            ("translations", "translation-", "json"),
-        ]
-        for kind in kinds {
-            let dir = aiDir.appendingPathComponent(kind.sub, isDirectory: true)
+        for kind in AIContentKind.allCases {
+            let dir = aiDir.appendingPathComponent(kind.localSub, isDirectory: true)
             for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-            where file.pathExtension == kind.ext {
+            where file.pathExtension == kind.localExt {
                 let id = file.deletingPathExtension().lastPathComponent
-                out["\(kind.prefix)\(id).\(kind.ext)"] = file
+                guard AIContentKind.isValidEpisodeId(id) else { continue }
+                out[kind.driveName(id: id)] = file
             }
         }
         return out
     }
 
     private nonisolated static func isContentName(_ name: String) -> Bool {
-        (name.hasPrefix("transcript-") && name.hasSuffix(".txt")) ||
-        (name.hasPrefix("handout-") && name.hasSuffix(".html")) ||
-        (name.hasPrefix("cues-") && name.hasSuffix(".json")) ||
-        (name.hasPrefix("translation-") && name.hasSuffix(".json"))
+        AIContentKind.parseDriveName(name) != nil
     }
 
     private nonisolated static func contentMime(_ name: String) -> String {
-        if name.hasSuffix(".html") { return "text/html" }
-        if name.hasSuffix(".json") { return "application/json" }
-        return "text/plain"
+        AIContentKind.parseDriveName(name)?.kind.mime ?? "text/plain"
     }
 
     private nonisolated func writeContent(name: String, data: Data) {
-        let mapping: [(prefix: String, suffix: String, sub: String, ext: String)] = [
-            ("transcript-", ".txt", "transcripts", "txt"),
-            ("handout-", ".html", "handouts", "html"),
-            ("cues-", ".json", "cues", "json"),
-            ("translation-", ".json", "translations", "json"),
-        ]
-        for map in mapping where name.hasPrefix(map.prefix) && name.hasSuffix(map.suffix) {
-            let id = String(name.dropFirst(map.prefix.count).dropLast(map.suffix.count))
-            // Drive content is keyed by episode id only; guard against junk ids the
-            // way AIContentStore.cleanupMalformedLocalContent does.
-            guard !id.isEmpty, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return }
-            let dir = aiDir.appendingPathComponent(map.sub, isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try? data.write(to: dir.appendingPathComponent("\(id).\(map.ext)"))
-            return
-        }
+        // parseDriveName also rejects junk ids, the way
+        // AIContentStore.cleanupMalformedLocalContent does.
+        guard let (kind, id) = AIContentKind.parseDriveName(name) else { return }
+        let dir = aiDir.appendingPathComponent(kind.localSub, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: dir.appendingPathComponent("\(id).\(kind.localExt)"))
     }
 
     // MARK: - Merge helpers
