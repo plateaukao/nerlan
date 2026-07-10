@@ -213,6 +213,10 @@ struct TranscriptView: View {
     /// Point sizes for the three font-scale steps.
     private var bodyFontSize: CGFloat { [17.0, 21.0, 26.0][min(max(fontScale, 0), 2)] }
 
+    /// Extra spacing between wrapped lines, scaled with the font so enlarged text
+    /// doesn't crowd — bigger type needs more breathing room between lines.
+    private var bodyLineSpacing: CGFloat { bodyFontSize * 0.3 }
+
     /// The transcription job's status note while it's still running for this
     /// episode (drives the streaming footer), else nil.
     private var transcriptRunningNote: String? {
@@ -376,11 +380,12 @@ struct TranscriptView: View {
         // In translation-only mode, fall back to the original when a line has no
         // translation, so the row is never blank.
         let showOriginal = translateMode != 2 || (translated?.isEmpty ?? true)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: bodyLineSpacing) {
             if showOriginal {
                 Text(line.text)
                     .font(.system(size: bodyFontSize))
                     .fontWeight(active ? .semibold : .regular)
+                    .lineSpacing(bodyLineSpacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if translateMode != 0, let translated, !translated.isEmpty {
@@ -388,6 +393,7 @@ struct TranscriptView: View {
                     .font(.system(size: translateMode == 2 ? bodyFontSize : bodyFontSize - 2))
                     .fontWeight(active && translateMode == 2 ? .semibold : .regular)
                     .foregroundStyle(translateMode == 2 ? Color.primary : Color.secondary)
+                    .lineSpacing(bodyLineSpacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
