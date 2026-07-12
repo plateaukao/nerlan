@@ -25,6 +25,13 @@ struct AddPodcastView: View {
                 } footer: {
                     Text("支援 Apple Podcasts 連結（podcasts.apple.com）或 RSS feed 網址。")
                 }
+                Section {
+                    Link(destination: URL(string: "https://podcasts.apple.com")!) {
+                        Label("到 Apple Podcasts 搜尋節目", systemImage: "magnifyingglass")
+                    }
+                } footer: {
+                    Text("搜尋想聽的節目後，複製節目連結貼回此處。")
+                }
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
