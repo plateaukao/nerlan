@@ -27,8 +27,8 @@ targets:
       path: NerLan/Resources/Info.plist
       properties:
         CFBundleDisplayName: NerLan
-        CFBundleShortVersionString: "1.6"
-        CFBundleVersion: "7"
+        CFBundleShortVersionString: "1.7"
+        CFBundleVersion: "8"
         # The app uses only standard HTTPS / Apple-provided crypto (App Transport
         # Security, Keychain) — exempt from export-compliance docs. Declaring this
         # skips the per-build encryption prompt on every TestFlight upload.
