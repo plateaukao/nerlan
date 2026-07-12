@@ -6,14 +6,26 @@ import SwiftUI
 struct ProgramListView: View {
     @EnvironmentObject var podcasts: PodcastStore
     @State private var groups: [LanguageGroup] = []
-    @State private var selectedLanguage: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSettings = false
     @State private var showAddPodcast = false
+    @State private var chipsExpanded = false
+    /// Last chosen language filter, restored across launches ("" = 全部).
+    @AppStorage("programLanguageFilter") private var storedLanguageFilter = ""
+
+    private var selectedLanguage: String? {
+        storedLanguageFilter.isEmpty ? nil : storedLanguageFilter
+    }
+
+    /// Chips lead with the most-studied languages so they stay on the visible
+    /// first row when the chip section is folded; the rest keep catalog order.
+    private static let priorityLanguages = ["英語", "日語", "韓語", "法語"]
 
     private var languages: [String] {
-        groups.map(\.language)
+        let all = groups.map(\.language)
+        let priority = Self.priorityLanguages.filter { all.contains($0) }
+        return priority + all.filter { !Self.priorityLanguages.contains($0) }
     }
 
     private var visibleGroups: [LanguageGroup] {
@@ -73,11 +85,33 @@ struct ProgramListView: View {
         List {
             ScrollAwayTitle(text: "語言學習")
             Section {
-                FlowLayout(spacing: 8) {
-                    languageChip(nil, label: "全部")
-                    ForEach(languages, id: \.self) { lang in
-                        languageChip(lang, label: lang)
+                // Collapsed: one scrollable line of chips. Expanded: full wrap
+                // layout. (Don't hide overflow chips by parking them offscreen
+                // inside the Layout — List cells grow to enclose them.)
+                HStack(alignment: .top, spacing: 4) {
+                    if chipsExpanded {
+                        FlowLayout(spacing: 8) {
+                            chipContent
+                        }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                chipContent
+                            }
+                        }
                     }
+                    Button {
+                        chipsExpanded.toggle()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(chipsExpanded ? 180 : 0))
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 4)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 2)
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -128,10 +162,18 @@ struct ProgramListView: View {
         }
     }
 
+    @ViewBuilder
+    private var chipContent: some View {
+        ForEach(languages, id: \.self) { lang in
+            languageChip(lang, label: lang)
+        }
+        languageChip(nil, label: "全部")
+    }
+
     private func languageChip(_ lang: String?, label: String) -> some View {
         let isSelected = selectedLanguage == lang
         return Button {
-            selectedLanguage = lang
+            storedLanguageFilter = lang ?? ""
         } label: {
             Text(label)
                 .font(.subheadline)
@@ -150,6 +192,7 @@ struct ProgramListView: View {
         guard groups.isEmpty else { return }
         if let cached = CatalogCache.loadPrograms(), !cached.isEmpty {
             groups = group(cached)
+            validateFilter()
             return
         }
         await reload()
@@ -162,12 +205,20 @@ struct ProgramListView: View {
             let programs = try await ChannelPlusAPI.programs()
             groups = group(programs)
             CatalogCache.savePrograms(programs)
+            validateFilter()
         } catch {
             // Keep any cached catalog already on screen; only surface the error
             // when we have nothing to show.
             if groups.isEmpty { errorMessage = error.localizedDescription }
         }
         isLoading = false
+    }
+
+    /// Drop a restored filter that no longer matches any catalog language,
+    /// which would otherwise leave the list permanently empty.
+    private func validateFilter() {
+        guard !groups.isEmpty, let selectedLanguage, !languages.contains(selectedLanguage) else { return }
+        storedLanguageFilter = ""
     }
 
     private func group(_ programs: [Program]) -> [LanguageGroup] {
@@ -198,9 +249,15 @@ struct FlowLayout: Layout {
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
-        let rows = layoutRows(maxWidth: proposal.width ?? .infinity, sizes: cache.sizes)
+        // Inside an HStack the layout gets zero/infinity flexibility probes
+        // (a bare List row only ever proposes a finite width); answer them
+        // with the widest row instead of echoing a non-finite width back.
+        let maxWidth = proposal.width ?? .infinity
+        let rows = layoutRows(maxWidth: maxWidth, sizes: cache.sizes)
         let height = rows.last.map { $0.y + $0.height } ?? 0
-        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
+        let widestRow = rows.map(\.width).max() ?? 0
+        let width = maxWidth.isFinite ? maxWidth : widestRow
+        return CGSize(width: width, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
