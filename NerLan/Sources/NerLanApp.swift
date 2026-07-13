@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct NerLanApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #if targetEnvironment(macCatalyst)
+    @AppStorage("sidebarHidden") private var sidebarHidden = false
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -34,14 +37,69 @@ struct NerLanApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            CommandGroup(after: .sidebar) {
+                Button(sidebarHidden ? "顯示側欄" : "隱藏側欄") { sidebarHidden.toggle() }
+                    .keyboardShortcut("s", modifiers: [.command, .option])
+            }
         }
         #endif
     }
 }
 
+#if targetEnvironment(macCatalyst)
+/// The Mac window titlebar toolbar: a single sidebar-toggle button sitting on
+/// the traffic-light row, always visible whatever tab or panel is showing.
+/// SwiftUI can't place controls there on Catalyst, so this is the AppKit
+/// bridge; the button just flips the `sidebarHidden` default that
+/// ContentView's split layout observes.
+final class MacToolbar: NSObject, NSToolbarDelegate {
+    static let shared = MacToolbar()
+    private static let toggleSidebar = NSToolbarItem.Identifier("toggleSidebar")
+
+    /// Idempotent; called from ContentView.onAppear once the scene exists.
+    func attach(to scene: UIWindowScene) {
+        guard let titlebar = scene.titlebar, titlebar.toolbar == nil else { return }
+        let toolbar = NSToolbar(identifier: "NerLanMain")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        titlebar.toolbar = toolbar
+        titlebar.toolbarStyle = .unifiedCompact
+        titlebar.titleVisibility = .hidden
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.toggleSidebar, .flexibleSpace]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar,
+                 itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard itemIdentifier == Self.toggleSidebar else { return nil }
+        let button = UIBarButtonItem(image: UIImage(systemName: "sidebar.leading"),
+                                     style: .plain, target: self, action: #selector(toggle))
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier, barButtonItem: button)
+        item.label = "側欄"
+        item.toolTip = "顯示或隱藏側欄"
+        return item
+    }
+
+    @objc private func toggle() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: "sidebarHidden"), forKey: "sidebarHidden")
+    }
+}
+#endif
+
 extension Notification.Name {
     /// Posted by the Mac "設定…" menu command; observed by ProgramListView.
     static let openSettings = Notification.Name("com.danielkao.NerLan.openSettings")
+    /// Posted by the Mac sidebar header's + button; observed by ProgramListView,
+    /// which owns the Add Podcast sheet.
+    static let addPodcast = Notification.Name("com.danielkao.NerLan.addPodcast")
 }
 
 extension View {

@@ -38,7 +38,10 @@ struct ProgramListView: View {
             Group {
                 if let errorMessage {
                     VStack(spacing: 0) {
+                        // On Mac the sidebar's segmented header replaces the title.
+                        #if !targetEnvironment(macCatalyst)
                         TopTitle(text: "語言學習")
+                        #endif
                         ContentUnavailableView("載入失敗", systemImage: "wifi.exclamationmark", description: Text(errorMessage))
                             .frame(maxHeight: .infinity)
                     }
@@ -51,7 +54,9 @@ struct ProgramListView: View {
             .refreshable { await reload() }
             // The nav bar is hidden so the title can live in the scroll content;
             // float the add-podcast and settings buttons in the top-trailing
-            // safe area instead.
+            // safe area instead. (On Mac both live elsewhere: + in the sidebar
+            // header, Settings in the app menu.)
+            #if !targetEnvironment(macCatalyst)
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 2) {
                     Button { showAddPodcast = true } label: {
@@ -60,30 +65,33 @@ struct ProgramListView: View {
                             .padding(10)
                             .contentShape(Rectangle())
                     }
-                    // On Mac the gear is replaced by the app-menu 設定… item (⌘,).
-                    #if !targetEnvironment(macCatalyst)
                     Button { showSettings = true } label: {
                         Image(systemName: "gear")
                             .font(.title3)
                             .padding(10)
                             .contentShape(Rectangle())
                     }
-                    #endif
                 }
                 .padding(.trailing, 6)
                 .padding(.top, 6)
             }
+            #endif
             .sheet(isPresented: $showSettings) { SettingsView().appEnvironment() }
             .sheet(isPresented: $showAddPodcast) { AddPodcastView().appEnvironment() }
             .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
                 showSettings = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .addPodcast)) { _ in
+                showAddPodcast = true
             }
         }
     }
 
     private var list: some View {
         List {
+            #if !targetEnvironment(macCatalyst)
             ScrollAwayTitle(text: "語言學習")
+            #endif
             Section {
                 // Collapsed: one scrollable line of chips. Expanded: full wrap
                 // layout. (Don't hide overflow chips by parking them offscreen
@@ -150,7 +158,7 @@ struct ProgramListView: View {
         .listStyle(.insetGrouped)
         // Remove the grouped list's default top inset so the title sits right
         // under the status bar instead of floating below it.
-        .contentMargins(.top, 0, for: .scrollContent)
+        .contentMargins(.top, tabListTopMargin, for: .scrollContent)
         .navigationDestination(for: Program.self) { program in
             ProgramDetailView(program: program)
         }

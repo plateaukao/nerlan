@@ -6,7 +6,9 @@ import SwiftUI
 /// required just to read what's already there).
 struct AITabView: View {
     @EnvironmentObject var ai: AIContentStore
-    @State private var grouping: RecordGrouping = .program
+    /// AppStorage (not @State) so the Mac sidebar header's toggle — which owns
+    /// this control's spot up there — drives the same value.
+    @AppStorage("aiGrouping") private var grouping: RecordGrouping = .program
 
     private var grouped: [(key: String, records: [EpisodeRecord])] {
         groupRecords(ai.aiRecords, by: grouping)
@@ -17,7 +19,10 @@ struct AITabView: View {
             Group {
                 if ai.aiRecords.isEmpty {
                     VStack(spacing: 0) {
+                        // On Mac the sidebar's segmented header replaces the title.
+                        #if !targetEnvironment(macCatalyst)
                         TopTitle(text: "AI")
+                        #endif
                         ContentUnavailableView("沒有 AI 內容",
                                                systemImage: "wand.and.stars",
                                                description: Text("在播放器或單集列表點選逐字稿或 AI 講義圖示來產生內容，就會出現在這裡。"))
@@ -25,7 +30,9 @@ struct AITabView: View {
                     }
                 } else {
                     List {
+                        #if !targetEnvironment(macCatalyst)
                         ScrollAwayTitle(text: "AI")
+                        #endif
                         ForEach(grouped, id: \.key) { group in
                             Section(group.key) {
                                 ForEach(group.records) { record in
@@ -34,12 +41,14 @@ struct AITabView: View {
                             }
                         }
                     }
-                    .contentMargins(.top, 0, for: .scrollContent)
+                    .contentMargins(.top, tabListTopMargin, for: .scrollContent)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
             // Pin the grouping switch in the top-trailing corner, aligned with
-            // the title — only when there's something to group.
+            // the title — only when there's something to group. (On Mac it
+            // lives in the sidebar header instead.)
+            #if !targetEnvironment(macCatalyst)
             .overlay(alignment: .topTrailing) {
                 if !ai.aiRecords.isEmpty {
                     GroupingToggle(selection: $grouping)
@@ -47,6 +56,7 @@ struct AITabView: View {
                         .padding(.top, 8)
                 }
             }
+            #endif
         }
     }
 }

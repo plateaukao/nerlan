@@ -4,12 +4,24 @@ struct ContentView: View {
     @EnvironmentObject var player: PlayerManager
     @EnvironmentObject var ai: AIContentStore
     @EnvironmentObject var study: StudyPanel
+    @EnvironmentObject var downloads: DownloadManager
     @State private var showPlayer = false
     /// iPhone-only: a transcript the store asked to auto-open once its first chunk
     /// landed (see `AIContentStore.presentTranscript`). Presented from here — the
     /// stable root — so it shows even after the player sheet that started it is
     /// gone. iPad routes through the always-visible side panel instead.
     @State private var autoTranscript: EpisodeRecord?
+    /// Mac only: collapses the left (browser) column of the split layout so the
+    /// study panel gets the whole window. Persisted like a real sidebar state.
+    @AppStorage("sidebarHidden") private var sidebarHidden = false
+    #if targetEnvironment(macCatalyst)
+    /// Mac left column: which section the segmented header shows.
+    @AppStorage("macSidebarTab") private var macSidebarTab = 0
+    // Shared with DownloadsView / AITabView, whose grouping toggles move up
+    // into the header on Mac.
+    @AppStorage("downloadsGrouping") private var downloadsGrouping: RecordGrouping = .program
+    @AppStorage("aiGrouping") private var aiGrouping: RecordGrouping = .program
+    #endif
 
     var body: some View {
         Group {
@@ -38,6 +50,20 @@ struct ContentView: View {
         // Pull anything new from Google Drive on launch (no-op unless Drive sync is
         // on and signed in). iCloud sync starts itself from the store inits.
         .task { DriveSync.shared.syncNow() }
+        .onAppear { attachMacToolbar() }
+    }
+
+    /// Mac only: hang the sidebar-toggle toolbar off the window titlebar.
+    private func attachMacToolbar() {
+        #if targetEnvironment(macCatalyst)
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first else {
+            // Not connected yet on the very first appear — retry next runloop.
+            DispatchQueue.main.async { attachMacToolbar() }
+            return
+        }
+        MacToolbar.shared.attach(to: scene)
+        #endif
     }
 
     /// Open a freshly-ready transcript from the stable root: the side panel on
@@ -65,17 +91,116 @@ struct ContentView: View {
     /// thumbnail flicker. The plain overlay bar is stable.
     private var splitLayout: some View {
         HStack(spacing: 0) {
-            legacyTabs
-                .frame(width: 390)
-            Divider()
-            StudyDetailView()
+            if !sidebarHidden {
+                sidebarColumn
+                    .frame(width: 390)
+                Divider()
+            }
+            studyPanel
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        // The toggle writes UserDefaults from AppKit (titlebar) or the menu
+        // command, so animate on the value change rather than withAnimation.
+        .animation(.easeInOut(duration: 0.2), value: sidebarHidden)
         // When a new episode starts, default the panel to its study content,
         // preferring a PDF handout, then the AI handout, then the transcript.
         .onChange(of: player.current) { _, record in
             showDefaultStudy(for: record)
         }
+    }
+
+    /// The split layout's left column. On Mac the bottom tab bar is replaced by
+    /// a segmented header (Catalyst moves a root tab bar into the titlebar on
+    /// macOS 15, where it collides with the NSToolbar); iPad keeps the TabView.
+    @ViewBuilder
+    private var sidebarColumn: some View {
+        #if targetEnvironment(macCatalyst)
+        macSidebar
+        #else
+        legacyTabs
+        #endif
+    }
+
+    #if targetEnvironment(macCatalyst)
+    private var macSidebar: some View {
+        VStack(spacing: 0) {
+            macSidebarHeader
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+            Group {
+                switch macSidebarTab {
+                case 1: FavoritesView()
+                case 2: DownloadsView()
+                case 3: AITabView()
+                default: ProgramListView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Keep list content clear of the floating mini player, same
+            // reserve as the study panel's.
+            .padding(.bottom, player.current != nil ? 72 : 0)
+        }
+        .overlay(alignment: .bottom) {
+            if player.current != nil {
+                MiniPlayerBar { showPlayer = true }
+                    .padding(.bottom, 8)
+            }
+        }
+    }
+
+    /// The 節目/收藏/下載/AI switch sitting where the page titles live on iOS,
+    /// with the selected section's title-row accessory beside it.
+    private var macSidebarHeader: some View {
+        HStack(spacing: 8) {
+            MacTabBar(selection: $macSidebarTab)
+            switch macSidebarTab {
+            case 0:
+                Button {
+                    NotificationCenter.default.post(name: .addPodcast, object: nil)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title3)
+                        .contentShape(Rectangle())
+                }
+                .help("加入 Podcast")
+            case 2 where !downloads.records.isEmpty:
+                GroupingToggle(selection: $downloadsGrouping)
+            case 3 where !ai.aiRecords.isEmpty:
+                GroupingToggle(selection: $aiGrouping)
+            default:
+                EmptyView()
+            }
+        }
+        .frame(height: 34)
+    }
+    #endif
+
+    /// The right-hand study panel. On Mac, while the sidebar is hidden the mini
+    /// player moves here so playback stays reachable; the sidebar toggle lives
+    /// in the window titlebar (see `MacToolbar`).
+    /// Whether the mini player is riding on the study panel right now.
+    private var showsPanelMiniPlayer: Bool {
+        sidebarHidden && player.current != nil
+    }
+
+    @ViewBuilder
+    private var studyPanel: some View {
+        #if targetEnvironment(macCatalyst)
+        StudyDetailView()
+            // Hard padding, not a safe-area inset: the handout webview ignores
+            // the bottom safe area, so an inset would still let it run under
+            // the bar. 72 = bar (56) + its bottom padding (8) + a gap (8).
+            .padding(.bottom, showsPanelMiniPlayer ? 72 : 0)
+            .overlay(alignment: .bottom) {
+                if showsPanelMiniPlayer {
+                    MiniPlayerBar { showPlayer = true }
+                        .padding(.bottom, 8)
+                }
+            }
+        #else
+        StudyDetailView()
+        #endif
     }
 
     private func showDefaultStudy(for record: EpisodeRecord?) {
@@ -143,6 +268,43 @@ struct ContentView: View {
         }
     }
 }
+
+#if targetEnvironment(macCatalyst)
+/// The Mac sidebar's section switcher, styled after `GroupingToggle`: one
+/// glass capsule split into equal segments, an accent capsule sliding to the
+/// selection — not the stock segmented picker, which Catalyst renders as an
+/// oversized iOS-style pill.
+private struct MacTabBar: View {
+    @Binding var selection: Int
+    @Namespace private var ns
+
+    private static let titles = ["節目", "收藏", "下載", "AI"]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(Self.titles.enumerated()), id: \.offset) { index, title in
+                let isSelected = selection == index
+                ZStack {
+                    if isSelected {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .padding(3)
+                            .matchedGeometryEffect(id: "indicator", in: ns)
+                    }
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.snappy) { selection = index } }
+            }
+        }
+        .frame(height: 34)
+        .modifier(CapsuleGlass())
+    }
+}
+#endif
 
 /// Content of the iOS 26 tab view bottom accessory. The system provides the
 /// glass capsule background; when the tab bar collapses on scroll the

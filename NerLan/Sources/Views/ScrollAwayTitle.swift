@@ -11,6 +11,16 @@ import SwiftUI
 ///
 /// Pair with `.toolbar(.hidden, for: .navigationBar)` on the list so no inline
 /// title / header bar is left behind.
+/// Top scroll margin for the tab lists' content. Zero on iOS so the
+/// scroll-away titles sit flush at the very top; on Mac the titles are removed
+/// (the sidebar's segmented header replaces them) and this keeps the first
+/// card from hugging the header.
+#if targetEnvironment(macCatalyst)
+let tabListTopMargin: CGFloat = 12
+#else
+let tabListTopMargin: CGFloat = 0
+#endif
+
 struct ScrollAwayTitle: View {
     let text: String
 

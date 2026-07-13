@@ -44,8 +44,8 @@ struct GroupingToggle: View {
 }
 
 /// A Liquid Glass capsule background on iOS 26, falling back to a material on
-/// older systems.
-private struct CapsuleGlass: ViewModifier {
+/// older systems. Shared with the Mac sidebar's tab bar (ContentView).
+struct CapsuleGlass: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content.glassEffect(.regular, in: .capsule)
@@ -68,7 +68,9 @@ func groupRecords(_ records: [EpisodeRecord], by grouping: RecordGrouping)
 struct DownloadsView: View {
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var player: PlayerManager
-    @State private var grouping: RecordGrouping = .program
+    /// AppStorage (not @State) so the Mac sidebar header's toggle — which owns
+    /// this control's spot up there — drives the same value.
+    @AppStorage("downloadsGrouping") private var grouping: RecordGrouping = .program
 
     private var grouped: [(key: String, records: [EpisodeRecord])] {
         groupRecords(downloads.records, by: grouping)
@@ -79,7 +81,10 @@ struct DownloadsView: View {
             Group {
                 if downloads.records.isEmpty {
                     VStack(spacing: 0) {
+                        // On Mac the sidebar's segmented header replaces the title.
+                        #if !targetEnvironment(macCatalyst)
                         TopTitle(text: "下載")
+                        #endif
                         ContentUnavailableView("沒有下載的單集",
                                                systemImage: "arrow.down.circle",
                                                description: Text("在節目頁面點選下載按鈕，即可離線收聽。"))
@@ -87,7 +92,9 @@ struct DownloadsView: View {
                     }
                 } else {
                     List {
+                        #if !targetEnvironment(macCatalyst)
                         ScrollAwayTitle(text: "下載")
+                        #endif
                         ForEach(grouped, id: \.key) { group in
                             Section(group.key) {
                                 ForEach(group.records) { record in
@@ -101,12 +108,14 @@ struct DownloadsView: View {
                             }
                         }
                     }
-                    .contentMargins(.top, 0, for: .scrollContent)
+                    .contentMargins(.top, tabListTopMargin, for: .scrollContent)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
             // Pin the grouping switch in the top-trailing corner, aligned with
-            // the title — only when there's something to group.
+            // the title — only when there's something to group. (On Mac it
+            // lives in the sidebar header instead.)
+            #if !targetEnvironment(macCatalyst)
             .overlay(alignment: .topTrailing) {
                 if !downloads.records.isEmpty {
                     GroupingToggle(selection: $grouping)
@@ -114,6 +123,7 @@ struct DownloadsView: View {
                         .padding(.top, 8)
                 }
             }
+            #endif
         }
     }
 }

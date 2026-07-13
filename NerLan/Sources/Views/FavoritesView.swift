@@ -16,7 +16,10 @@ struct FavoritesView: View {
             Group {
                 if favorites.favorites.isEmpty && favorites.programs.isEmpty {
                     VStack(spacing: 0) {
+                        // On Mac the sidebar's segmented header replaces the title.
+                        #if !targetEnvironment(macCatalyst)
                         TopTitle(text: "收藏")
+                        #endif
                         ContentUnavailableView("沒有收藏",
                                                systemImage: "heart",
                                                description: Text("點選節目或單集旁的愛心即可加入收藏。"))
@@ -24,7 +27,9 @@ struct FavoritesView: View {
                     }
                 } else {
                     List {
+                        #if !targetEnvironment(macCatalyst)
                         ScrollAwayTitle(text: "收藏")
+                        #endif
                         if !favorites.programs.isEmpty {
                             Section("節目") {
                                 ForEach(favorites.programs) { program in
@@ -55,7 +60,7 @@ struct FavoritesView: View {
                             }
                         }
                     }
-                    .contentMargins(.top, 0, for: .scrollContent)
+                    .contentMargins(.top, tabListTopMargin, for: .scrollContent)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
