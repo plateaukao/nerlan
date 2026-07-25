@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var ai: AIContentStore
     @EnvironmentObject var study: StudyPanel
     @EnvironmentObject var downloads: DownloadManager
+    @EnvironmentObject var router: DeepLinkRouter
     @State private var showPlayer = false
     /// iPhone-only: a transcript the store asked to auto-open once its first chunk
     /// landed (see `AIContentStore.presentTranscript`). Presented from here — the
@@ -47,6 +48,8 @@ struct ContentView: View {
             ai.presentTranscript = nil
             presentTranscriptView(record)
         }
+        // A widget tapped through to "what's playing" — open the full player.
+        .onChange(of: router.openPlayerSignal) { _, _ in showPlayer = true }
         // Pull anything new from Google Drive on launch (no-op unless Drive sync is
         // on and signed in). iCloud sync starts itself from the store inits.
         .task { DriveSync.shared.syncNow() }
@@ -232,11 +235,12 @@ struct ContentView: View {
     /// conditional inside the content closure would leave an empty capsule.
     @available(iOS 26.1, *)
     private var modernTabs: some View {
-        TabView {
-            Tab("節目", systemImage: "radio") { ProgramListView() }
-            Tab("收藏", systemImage: "heart") { FavoritesView() }
-            Tab("下載", systemImage: "arrow.down.circle") { DownloadsView() }
-            Tab("AI", systemImage: "wand.and.stars") { AITabView() }
+        // Selection is bound so a widget deep link can switch tabs.
+        TabView(selection: $router.tab) {
+            Tab("節目", systemImage: "radio", value: DeepLinkRouter.Tab.programs) { ProgramListView() }
+            Tab("收藏", systemImage: "heart", value: DeepLinkRouter.Tab.favorites) { FavoritesView() }
+            Tab("下載", systemImage: "arrow.down.circle", value: DeepLinkRouter.Tab.downloads) { DownloadsView() }
+            Tab("AI", systemImage: "wand.and.stars", value: DeepLinkRouter.Tab.ai) { AITabView() }
         }
         // Only let the tab bar collapse on scroll while the mini player is
         // showing (so the accessory slides inline, Apple Music style). With
@@ -248,15 +252,19 @@ struct ContentView: View {
     }
 
     private var legacyTabs: some View {
-        TabView {
+        TabView(selection: $router.tab) {
             ProgramListView()
                 .tabItem { Label("節目", systemImage: "radio") }
+                .tag(DeepLinkRouter.Tab.programs)
             FavoritesView()
                 .tabItem { Label("收藏", systemImage: "heart") }
+                .tag(DeepLinkRouter.Tab.favorites)
             DownloadsView()
                 .tabItem { Label("下載", systemImage: "arrow.down.circle") }
+                .tag(DeepLinkRouter.Tab.downloads)
             AITabView()
                 .tabItem { Label("AI", systemImage: "wand.and.stars") }
+                .tag(DeepLinkRouter.Tab.ai)
         }
         // Float the mini player above the tab bar with an overlay:
         // safeAreaInset over a List doesn't receive touches reliably.

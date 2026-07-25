@@ -68,4 +68,15 @@ enum ChannelPlusAPI {
         guard resp.success else { throw APIError.server(resp.rtnMsg ?? "episodes failed") }
         return (resp.data ?? [], resp.pagination?.totalPages ?? 1, resp.pagination?.totalCount ?? 0)
     }
+
+    /// The newest episodes of a program, for the 最新單集 widget. The browse list
+    /// pages ascending (a course is meant to be taken in order), so its cache
+    /// never holds the tail — this asks for the other end explicitly.
+    static func latestEpisodes(programId: String, count: Int = 3) async throws -> [Episode] {
+        let resp = try await get(
+            "programs/episodes/\(programId)?page=1&size=\(count)&sortOrder=DESC&sortField=episode_number",
+            as: [Episode].self)
+        guard resp.success else { throw APIError.server(resp.rtnMsg ?? "episodes failed") }
+        return resp.data ?? []
+    }
 }

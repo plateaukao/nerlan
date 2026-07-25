@@ -12,6 +12,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      completionHandler: @escaping () -> Void) {
         DownloadManager.shared.backgroundCompletionHandler = completionHandler
     }
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Widget buttons post `AudioPlaybackIntent`s, which the system performs in
+        // *this* process — sometimes after launching it in the background purely to
+        // do so. Registering here (rather than from a view's onAppear) guarantees
+        // the handler exists before any such intent can be delivered.
+        PlaybackBridge.handler = PlayerManager.shared
+        WidgetBridge.shared.start()
+        return true
+    }
 }
 
 @main
@@ -25,6 +36,7 @@ struct NerLanApp: App {
         WindowGroup {
             ContentView()
                 .appEnvironment()
+                .onOpenURL { DeepLinkRouter.shared.handle($0) }
         }
         #if targetEnvironment(macCatalyst)
         // On Mac, surface Settings as the standard app-menu item (⌘,) rather than a
@@ -120,5 +132,6 @@ extension View {
             .environmentObject(StudyPanel.shared)
             .environmentObject(ListeningStatsStore.shared)
             .environmentObject(DriveSync.shared)
+            .environmentObject(DeepLinkRouter.shared)
     }
 }

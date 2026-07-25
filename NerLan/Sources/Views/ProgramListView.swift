@@ -5,6 +5,10 @@ import SwiftUI
 /// grouped by language client-side, so the chips filter instantly.
 struct ProgramListView: View {
     @EnvironmentObject var podcasts: PodcastStore
+    @EnvironmentObject var router: DeepLinkRouter
+    /// Only ever driven by a widget deep link — normal browsing pushes through
+    /// the NavigationLinks themselves.
+    @State private var path = NavigationPath()
     @State private var groups: [LanguageGroup] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -34,7 +38,7 @@ struct ProgramListView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let errorMessage {
                     VStack(spacing: 0) {
@@ -50,8 +54,17 @@ struct ProgramListView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .task { await loadInitial() }
+            .task {
+                await loadInitial()
+                consumePendingNavigation()
+            }
             .refreshable { await reload() }
+            // A widget deep link can land before the catalog has loaded, so try
+            // again whenever either the request or the catalog changes.
+            .onChange(of: router.pendingProgramId) { _, _ in consumePendingNavigation() }
+            .onChange(of: router.pendingFeedId) { _, _ in consumePendingNavigation() }
+            .onChange(of: groups.count) { _, _ in consumePendingNavigation() }
+            .onChange(of: podcasts.feeds.count) { _, _ in consumePendingNavigation() }
             // The nav bar is hidden so the title can live in the scroll content;
             // float the add-podcast and settings buttons in the top-trailing
             // safe area instead. (On Mac both live elsewhere: + in the sidebar
@@ -192,6 +205,22 @@ struct ProgramListView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    /// Push the show a widget asked for, once we can resolve it. Favorited
+    /// programs may sit behind a language filter, so resolve against the whole
+    /// catalog rather than what's currently on screen.
+    private func consumePendingNavigation() {
+        if let id = router.pendingFeedId, let feed = podcasts.feed(id: id) {
+            router.pendingFeedId = nil
+            router.pendingProgramId = nil
+            path = NavigationPath([feed])
+        } else if let id = router.pendingProgramId,
+                  let program = groups.flatMap(\.programs).first(where: { $0.programId == id })
+                    ?? FavoritesStore.shared.programs.first(where: { $0.programId == id }) {
+            router.pendingProgramId = nil
+            path = NavigationPath([program])
+        }
     }
 
     /// On first appearance, render the cached catalog if we have one (no network);

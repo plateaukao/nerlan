@@ -26,5 +26,15 @@
     <string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!--
+      Shared container for the widget snapshot. On macOS (Catalyst) App Group
+      ids must carry the team prefix, unlike iOS's bare "group." form — so this
+      value deliberately differs from the generated iOS entitlements.
+      WidgetShare probes both ids at runtime.
+    -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>$(TeamIdentifierPrefix)group.com.danielkao.NerLan</string>
+    </array>
 </dict>
 </plist>

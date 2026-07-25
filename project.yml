@@ -9,8 +9,13 @@ targets:
     platform: iOS
     sources:
       - NerLan/Sources
+      # Model + intent code shared verbatim with the widget extension.
+      - NerLan/Shared
       - path: NerLan/Resources/Assets.xcassets
         buildPhase: resources
+    dependencies:
+      # XcodeGen embeds app-extension dependencies into the app's PlugIns folder.
+      - target: NerLanWidgets
     entitlements:
       path: NerLan/Resources/NerLan.entitlements
       properties:
@@ -23,6 +28,10 @@ targets:
         # Key-value store for syncing favorites and the AI tab's per-episode
         # metadata (small mutable records, one key each).
         com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
+        # Shared container the app writes the widget snapshot (+ cover thumbnails)
+        # into; the widget extension only ever reads it.
+        com.apple.security.application-groups:
+          - group.com.danielkao.NerLan
     info:
       path: NerLan/Resources/Info.plist
       properties:
@@ -74,6 +83,10 @@ targets:
             NSUbiquitousContainerIsDocumentScopePublic: true
             NSUbiquitousContainerName: NerLan
             NSUbiquitousContainerSupportedFolderLevels: Any
+        # Widgets deep-link back into the app with nerlan:// URLs (see DeepLink.swift).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.danielkao.NerLan
+            CFBundleURLSchemes: [nerlan]
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -93,3 +106,44 @@ targets:
         SUPPORTS_MACCATALYST: "YES"
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: "NO"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+  # WidgetKit extension: Home Screen / Lock Screen widgets modelled on the
+  # Apple Podcasts set (繼續收聽 / 最新單集 / 我的節目 / 學習紀錄). It never talks
+  # to the network or touches Documents — everything it draws comes from the
+  # snapshot the app publishes into the shared App Group container.
+  NerLanWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - NerLan/Shared
+      - NerLanWidgets
+    entitlements:
+      path: NerLanWidgets/NerLanWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.danielkao.NerLan
+    info:
+      path: NerLanWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: NerLan
+        CFBundleShortVersionString: "1.7"
+        CFBundleVersion: "8"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3WD42GF27D
+        GENERATE_INFOPLIST_FILE: NO
+        # Extension bundle ids must be prefixed by the host app's id.
+        PRODUCT_BUNDLE_IDENTIFIER: com.danielkao.NerLan.Widgets
+        SKIP_INSTALL: "YES"
+        # The Mac build embeds the same extension, so it has to build for
+        # Catalyst too. On macOS the App Group id is team-prefixed — hence its
+        # own entitlements file (WidgetShare probes both forms at runtime).
+        SUPPORTS_MACCATALYST: "YES"
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: "NO"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": NerLanWidgets/NerLanWidgets-macOS.entitlements
