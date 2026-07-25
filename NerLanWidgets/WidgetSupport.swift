@@ -50,6 +50,50 @@ extension Timeline where EntryType == SnapshotEntry {
     }
 }
 
+// MARK: - Configuration entity
+
+/// A show the user can pick in a widget's edit sheet — used by both 最新單集
+/// (pick one) and 我的節目 (pick several). Backed entirely by the snapshot; the
+/// extension has no other view of the library.
+struct ShowEntity: AppEntity {
+    var id: String
+    var name: String
+    var isPodcast: Bool
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation { "節目" }
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+    static var defaultQuery = ShowEntityQuery()
+
+    init(id: String, name: String, isPodcast: Bool) {
+        self.id = id
+        self.name = name
+        self.isPodcast = isPodcast
+    }
+
+    init(_ show: WidgetShow) {
+        self.init(id: show.id, name: show.name, isPodcast: show.isPodcast)
+    }
+}
+
+struct ShowEntityQuery: EntityQuery {
+    /// Offer recently-played shows too, not just favorited ones — you can work
+    /// through a course for weeks without ever tapping its heart.
+    private var shows: [WidgetShow] {
+        guard let snapshot = WidgetShare.loadSnapshot() else { return [] }
+        var seen = Set<String>()
+        return (snapshot.shows + snapshot.recentShows).filter { seen.insert($0.id).inserted }
+    }
+
+    func entities(for identifiers: [ShowEntity.ID]) async throws -> [ShowEntity] {
+        // Preserve the caller's order: for 我的節目 that order *is* the layout.
+        identifiers.compactMap { id in shows.first { $0.id == id }.map(ShowEntity.init) }
+    }
+
+    func suggestedEntities() async throws -> [ShowEntity] {
+        shows.map(ShowEntity.init)
+    }
+}
+
 // MARK: - Artwork
 
 /// Cover art from the shared container, with the app's music-note placeholder.
@@ -234,6 +278,20 @@ extension WidgetSnapshot {
                            isPodcast: false, latest: []),
                 WidgetShow(id: "d", name: "法語入門", language: "法語", coverKey: nil,
                            isPodcast: false, latest: []),
+            ],
+            recents: [
+                WidgetShow(id: "a", name: "階梯日本語", language: "日語", coverKey: nil,
+                           isPodcast: false, latest: [],
+                           lastEpisodeId: "1", lastEpisodeTitle: "第 12 課 買車票",
+                           lastPlayedAt: Date(), resumeProgress: 0.28),
+                WidgetShow(id: "b", name: "空中英語教室", language: "英語", coverKey: nil,
+                           isPodcast: false, latest: [],
+                           lastEpisodeId: "4", lastEpisodeTitle: "Lesson 8 Small Talk",
+                           lastPlayedAt: Date(), resumeProgress: 0.71),
+                WidgetShow(id: "c", name: "韓語一起學", language: "韓語", coverKey: nil,
+                           isPodcast: false, latest: [],
+                           lastEpisodeId: "9", lastEpisodeTitle: "第 5 課 打招呼",
+                           lastPlayedAt: Date(), resumeProgress: 0.05),
             ],
             stats: WidgetStats(minutesToday: 24, minutesThisWeek: 143,
                                streakDays: 6, completedCount: 87))

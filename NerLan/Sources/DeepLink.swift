@@ -110,11 +110,49 @@ enum EpisodeLookup {
     /// What a bare "play" button falls back to when nothing is loaded: the same
     /// first suggestion the widget was showing.
     static func firstSuggestion() -> (record: EpisodeRecord, queue: [EpisodeRecord])? {
+        // Continuing whatever was last played beats offering an arbitrary
+        // download, so try that first — even for a show that was never
+        // favorited or downloaded, which is where `find` alone comes up empty.
+        if let recent = RecentShowsStore.shared.shows.first {
+            if let hit = find(recent.lastEpisodeId) { return hit }
+            let episodes = ShowLookup.episodes(showId: recent.id, isPodcast: recent.isPodcast)
+            if let start = episodes.first(where: { $0.id == recent.lastEpisodeId }) ?? episodes.first {
+                return (start, episodes)
+            }
+        }
         let downloads = DownloadManager.shared.records
         if let record = downloads.last { return (record, downloads) }
         let favorites = FavoritesStore.shared.favorites
         if let record = favorites.last { return (record, favorites) }
         return nil
+    }
+}
+
+/// A whole show as a playable queue. NER programs come from the browse cache,
+/// which stores pages ascending from episode 1 — course order, which is exactly
+/// the playlist we want.
+@MainActor
+enum ShowLookup {
+    static func episodes(showId: String, isPodcast: Bool) -> [EpisodeRecord] {
+        if isPodcast {
+            return PodcastStore.shared.feed(id: showId)?.episodes ?? []
+        }
+        guard let program = program(id: showId) else { return [] }
+        if let cached = CatalogCache.loadEpisodes(programId: showId), !cached.episodes.isEmpty {
+            return cached.episodes.map {
+                EpisodeRecord(episode: $0, programId: program.programId,
+                              programName: program.name, language: program.language,
+                              coverURL: program.coverURL?.absoluteString)
+            }
+        }
+        // Never browsed on this device: the widget's own newest-episodes cache is
+        // still enough to start the show.
+        return WidgetLatestEpisodes.latest(programId: showId)
+    }
+
+    private static func program(id: String) -> Program? {
+        FavoritesStore.shared.programs.first { $0.programId == id }
+            ?? CatalogCache.loadPrograms()?.first { $0.programId == id }
     }
 }
 
@@ -134,6 +172,21 @@ extension PlayerManager: WidgetPlaybackHandling {
             togglePlayPause()
         } else if let hit = EpisodeLookup.find(episodeId) {
             play(hit.record, in: hit.queue)
+        }
+    }
+
+    func widgetPlayShow(showId: String, isPodcast: Bool) {
+        let episodes = ShowLookup.episodes(showId: showId, isPodcast: isPodcast)
+        guard !episodes.isEmpty else { return }
+        // Resume the episode this show was left on; a show never played starts at
+        // the top, which for a sequential course means lesson 1.
+        let resumeId = RecentShowsStore.shared.entry(id: showId)?.lastEpisodeId
+        let start = resumeId.flatMap { id in episodes.first { $0.id == id } } ?? episodes[0]
+        if current?.id == start.id {
+            togglePlayPause()
+        } else {
+            // The whole show becomes the queue, so playback runs on through it.
+            play(start, in: episodes)
         }
     }
 

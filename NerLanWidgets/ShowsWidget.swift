@@ -1,23 +1,73 @@
+import AppIntents
 import SwiftUI
 import WidgetKit
 
 /// 我的節目 — the shows grid: favorited NER programs and subscribed podcasts,
 /// each cover tapping straight through to that show's episode list.
+///
+/// More shows usually exist than fit, so there are two answers to "which ones":
+/// by default the app ranks them by listening time (Apple's Top Shows
+/// behaviour), and the edit sheet lets you pin an explicit set in an explicit
+/// order. Placing several copies pinned to different shows works too.
 struct ShowsWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: WidgetKind.shows, provider: SnapshotProvider()) { entry in
+        AppIntentConfiguration(kind: WidgetKind.shows,
+                               intent: SelectShowsIntent.self,
+                               provider: ShowsProvider()) { entry in
             ShowsView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("我的節目")
-        .description("收藏的節目與訂閱的 Podcast，一按就打開。")
+        .description("收藏的節目與訂閱的 Podcast，一按就打開。可自選要顯示哪幾個。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+struct SelectShowsIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "選擇節目"
+    static var description = IntentDescription("挑選要顯示的節目；不選的話依收聽時間排序。")
+
+    @Parameter(title: "節目")
+    var shows: [ShowEntity]?
+
+    init() {}
+}
+
+struct ShowsEntry: TimelineEntry {
+    let date: Date
+    let shows: [WidgetShow]
+}
+
+struct ShowsProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> ShowsEntry {
+        ShowsEntry(date: Date(), shows: WidgetSnapshot.preview.shows)
+    }
+
+    func snapshot(for configuration: SelectShowsIntent, in context: Context) async -> ShowsEntry {
+        entry(for: configuration, preview: context.isPreview)
+    }
+
+    func timeline(for configuration: SelectShowsIntent, in context: Context) async -> Timeline<ShowsEntry> {
+        let entry = entry(for: configuration, preview: false)
+        return Timeline(entries: [entry], policy: .after(entry.date.addingTimeInterval(3600)))
+    }
+
+    private func entry(for configuration: SelectShowsIntent, preview: Bool) -> ShowsEntry {
+        let snapshot = preview ? .preview : (WidgetShare.loadSnapshot() ?? .empty)
+        // Pinned shows win, in the order they were picked; anything since removed
+        // from the library is dropped rather than left as a hole.
+        guard let picked = configuration.shows, !picked.isEmpty else {
+            return ShowsEntry(date: Date(), shows: snapshot.shows)
+        }
+        let byId = Dictionary(uniqueKeysWithValues:
+            (snapshot.shows + snapshot.recentShows).map { ($0.id, $0) })
+        return ShowsEntry(date: Date(), shows: picked.compactMap { byId[$0.id] })
     }
 }
 
 struct ShowsView: View {
     @Environment(\.widgetFamily) private var family
-    let entry: SnapshotEntry
+    let entry: ShowsEntry
 
     /// Small fits a 2×2 block of bare covers; medium a row of four with names;
     /// large two such rows.
@@ -29,7 +79,7 @@ struct ShowsView: View {
         }
     }
 
-    private var shows: [WidgetShow] { Array(entry.snapshot.shows.prefix(layout.limit)) }
+    private var shows: [WidgetShow] { Array(entry.shows.prefix(layout.limit)) }
 
     var body: some View {
         if shows.isEmpty {

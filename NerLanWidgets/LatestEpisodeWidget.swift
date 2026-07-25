@@ -20,40 +20,6 @@ struct LatestEpisodeWidget: Widget {
 
 // MARK: - Configuration
 
-/// A show the user can pick in the widget's edit sheet. Backed entirely by the
-/// snapshot — the extension has no other view of the library.
-struct ShowEntity: AppEntity {
-    var id: String
-    var name: String
-    var isPodcast: Bool
-
-    static var typeDisplayRepresentation: TypeDisplayRepresentation { "節目" }
-    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
-    static var defaultQuery = ShowEntityQuery()
-
-    init(id: String, name: String, isPodcast: Bool) {
-        self.id = id
-        self.name = name
-        self.isPodcast = isPodcast
-    }
-
-    init(_ show: WidgetShow) {
-        self.init(id: show.id, name: show.name, isPodcast: show.isPodcast)
-    }
-}
-
-struct ShowEntityQuery: EntityQuery {
-    private var shows: [WidgetShow] { WidgetShare.loadSnapshot()?.shows ?? [] }
-
-    func entities(for identifiers: [ShowEntity.ID]) async throws -> [ShowEntity] {
-        shows.filter { identifiers.contains($0.id) }.map(ShowEntity.init)
-    }
-
-    func suggestedEntities() async throws -> [ShowEntity] {
-        shows.map(ShowEntity.init)
-    }
-}
-
 struct SelectShowIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "選擇節目"
     static var description = IntentDescription("選一個收藏的節目或訂閱的 Podcast。")

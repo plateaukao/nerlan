@@ -16,6 +16,9 @@ protocol WidgetPlaybackHandling: AnyObject {
     /// Play the given episode id, resolving it from downloads / favorites /
     /// podcasts / the current queue. Toggles instead if it's already loaded.
     func widgetPlay(episodeId: String)
+    /// Play a whole show as a playlist, resuming at the episode (and offset) it
+    /// was last left on.
+    func widgetPlayShow(showId: String, isPodcast: Bool)
     func widgetNext()
     func widgetSkip(_ seconds: Double)
 }
@@ -57,6 +60,33 @@ struct PlayEpisodeIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         PlaybackBridge.handler?.widgetPlay(episodeId: episodeId)
+        return .result()
+    }
+}
+
+/// Resume a whole show — the 最近播放 widget's play button. The episode list
+/// becomes the player queue, so playback continues through the course in order.
+struct PlayShowIntent: AudioPlaybackIntent {
+    static var title: LocalizedStringResource = "繼續播放節目"
+    static var description = IntentDescription("從上次停下的地方繼續播放整個節目。")
+    static var isDiscoverable: Bool { false }
+
+    @Parameter(title: "節目編號")
+    var showId: String
+
+    @Parameter(title: "是否為 Podcast")
+    var isPodcast: Bool
+
+    init() {}
+
+    init(showId: String, isPodcast: Bool) {
+        self.showId = showId
+        self.isPodcast = isPodcast
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        PlaybackBridge.handler?.widgetPlayShow(showId: showId, isPodcast: isPodcast)
         return .result()
     }
 }

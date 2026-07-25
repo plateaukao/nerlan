@@ -287,12 +287,21 @@ final class ListeningStatsStore: ObservableObject {
         }
     }
 
-    /// Programs ranked by listening time, descending.
-    func topPrograms(_ limit: Int) -> [ProgramStat] {
+    /// programId -> total seconds listened, merged across devices. Also ranks the
+    /// widget's show grid, the way Apple Podcasts orders Top Shows.
+    func secondsByProgram() -> [String: Double] {
         var secs: [String: Double] = [:]
-        var names: [String: String] = [:]
         for s in mergedStats() {
             for (pid, v) in s.programSeconds { secs[pid, default: 0] += v }
+        }
+        return secs
+    }
+
+    /// Programs ranked by listening time, descending.
+    func topPrograms(_ limit: Int) -> [ProgramStat] {
+        let secs = secondsByProgram()
+        var names: [String: String] = [:]
+        for s in mergedStats() {
             for (pid, n) in s.programNames where names[pid] == nil { names[pid] = n }
         }
         return secs.sorted { $0.value > $1.value }

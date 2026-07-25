@@ -78,6 +78,10 @@ final class PlayerManager: ObservableObject {
     /// time spent listening (independent of playback rate). Nil while paused/idle;
     /// gaps larger than a few seconds (pause, seek, backgrounding) are discarded.
     private var lastTick: Date?
+    /// When the resume position was last written to disk. Saving on every 0.5s
+    /// tick would be pointless churn, so it's throttled the way the listening
+    /// stats are.
+    private var lastPositionSave: Date?
     /// The caching item currently streaming (when cache-on-stream is enabled),
     /// plus the episode it belongs to, so its completed buffer is saved under the
     /// right id. Only one is ever live — the previous one is stopped on each load.
@@ -138,9 +142,25 @@ final class PlayerManager: ObservableObject {
             }
         }
         lastTick = now
+        if lastPositionSave.map({ now.timeIntervalSince($0) >= 5 }) ?? true {
+            lastPositionSave = now
+            savePosition()
+        }
+    }
+
+    /// Persist where the current episode is, so reopening it resumes. The store
+    /// drops positions at either edge, so this can be called freely.
+    private func savePosition() {
+        guard let current, clock.currentTime > 0 else { return }
+        PlaybackPositionStore.shared.record(episodeId: current.id,
+                                            position: clock.currentTime,
+                                            duration: clock.duration)
     }
 
     private func load(_ record: EpisodeRecord) {
+        // Pin where the outgoing episode got to before anything is torn down.
+        savePosition()
+        lastPositionSave = nil
         // Discard any still-streaming caching item from the previous episode.
         cachingItem?.stopDownloading()
         cachingItem = nil
@@ -179,6 +199,14 @@ final class PlayerManager: ObservableObject {
             Task { @MainActor [weak self] in self?.playbackDidFinish() }
         }
         player.replaceCurrentItem(with: item)
+        // Pick up where this episode was left. The seek is queued against the
+        // fresh item, so it applies as soon as the asset is ready; setting the
+        // clock now keeps the scrubber and lock screen from flashing 0:00.
+        if let resume = PlaybackPositionStore.shared.position(for: record.id) {
+            player.seek(to: CMTime(seconds: resume, preferredTimescale: 600))
+            clock.currentTime = resume
+        }
+        RecentShowsStore.shared.note(record)
         try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
         isPlaying = true
@@ -209,6 +237,8 @@ final class PlayerManager: ObservableObject {
     /// Auto-advance when an episode finishes; honors the repeat mode.
     private func playbackDidFinish() {
         ListeningStatsStore.shared.noteCompleted()
+        // Finished: drop the resume point so replaying starts from the top.
+        if let current { PlaybackPositionStore.shared.clear(episodeId: current.id) }
         if repeatMode == .one {
             seek(to: 0)
             player.play()
@@ -311,6 +341,7 @@ final class PlayerManager: ObservableObject {
         player.pause()
         isPlaying = false
         lastTick = nil
+        savePosition()
         ListeningStatsStore.shared.flush()
         updateNowPlayingElapsed()
     }

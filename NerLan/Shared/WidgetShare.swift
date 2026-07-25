@@ -29,8 +29,16 @@ struct WidgetShow: Codable, Hashable, Identifiable {
     var language: String
     var coverKey: String?
     var isPodcast: Bool
-    /// Newest episodes first, at most a handful — what 最新單集 renders.
+    /// Newest episodes first, at most a handful — what 最新單集 renders. Empty for
+    /// entries that only appear in `recents`.
     var latest: [WidgetEpisode]
+    // The rest describe where this show was left off, for 最近播放. All optional:
+    // a show that has never been played simply has none of them.
+    var lastEpisodeId: String?
+    var lastEpisodeTitle: String?
+    var lastPlayedAt: Date?
+    /// 0…1 through `lastEpisodeId`, from the saved resume position.
+    var resumeProgress: Double?
 }
 
 /// Listening totals for the 學習紀錄 widget. Minutes, not seconds: the widget
@@ -57,13 +65,20 @@ struct WidgetSnapshot: Codable, Hashable {
     /// What follows `nowPlaying` — the rest of the player queue, topped up from
     /// downloads and favorites so the widget is never empty.
     var upNext: [WidgetEpisode]
+    /// Favorited programs and subscribed podcasts, ranked by listening time.
     var shows: [WidgetShow]
+    /// Shows actually played recently, newest first — a separate list, because a
+    /// course you're working through may never have been favorited. Optional so a
+    /// snapshot written by an older build still decodes; read via `recentShows`.
+    var recents: [WidgetShow]?
     var stats: WidgetStats
+
+    var recentShows: [WidgetShow] { recents ?? [] }
 
     static let empty = WidgetSnapshot(
         updatedAt: .distantPast, nowPlaying: nil, isPlaying: false,
         position: 0, positionAt: .distantPast, rate: 1,
-        upNext: [], shows: [],
+        upNext: [], shows: [], recents: [],
         stats: WidgetStats(minutesToday: 0, minutesThisWeek: 0, streakDays: 0, completedCount: 0))
 
     /// Playback position at `date`, extrapolated while playing. Clamped to the
@@ -164,6 +179,7 @@ enum WidgetKind {
     static let upNext = "NerLanUpNext"
     static let latestEpisode = "NerLanLatestEpisode"
     static let shows = "NerLanShows"
+    static let recent = "NerLanRecent"
     static let stats = "NerLanStats"
 }
 

@@ -33,6 +33,7 @@ final class WidgetBridge {
             FavoritesStore.shared.objectWillChange,
             DownloadManager.shared.objectWillChange,
             PodcastStore.shared.objectWillChange,
+            RecentShowsStore.shared.objectWillChange,
         ])
         .debounce(for: .seconds(1), scheduler: RunLoop.main)
         .sink { [weak self] _ in self?.refresh() }
@@ -86,6 +87,7 @@ final class WidgetBridge {
             rate: Double(player.playbackRate),
             upNext: upNext(covers: &covers),
             shows: shows(covers: &covers),
+            recents: recents(covers: &covers),
             stats: stats())
     }
 
@@ -114,39 +116,71 @@ final class WidgetBridge {
 
     /// Favorited NER programs and subscribed podcasts, each with its newest
     /// episodes so 最新單集 can render without another lookup.
+    ///
+    /// Ranked by listening time, which is what makes the 我的節目 grid useful when
+    /// more shows are favorited than fit: the ones actually being studied float
+    /// to the top, the way Apple Podcasts orders Top Shows. (The widget can still
+    /// be configured to pin an explicit set — this is just the default order.)
     private func shows(covers: inout [String: String]) -> [WidgetShow] {
         var out: [WidgetShow] = []
 
         for program in FavoritesStore.shared.programs {
-            var key: String?
-            if let cover = program.coverURL?.absoluteString, let k = WidgetShare.coverKey(for: cover) {
-                key = k
-                covers[k] = cover
-            }
             let latest = WidgetLatestEpisodes.latest(programId: program.programId)
                 .prefix(3)
                 .map { episode($0, covers: &covers) }
-            out.append(WidgetShow(id: program.programId, name: program.name,
-                                  language: program.language, coverKey: key,
-                                  isPodcast: false, latest: Array(latest)))
+            out.append(show(id: program.programId, name: program.name,
+                            language: program.language,
+                            coverURL: program.coverURL?.absoluteString,
+                            isPodcast: false, latest: Array(latest), covers: &covers))
         }
 
         for feed in PodcastStore.shared.feeds {
-            var key: String?
-            if let cover = feed.coverURL, let k = WidgetShare.coverKey(for: cover) {
-                key = k
-                covers[k] = cover
-            }
             // Feed order isn't guaranteed newest-first; sort explicitly.
             let latest = feed.episodes
                 .sorted { ($0.playDate ?? "") > ($1.playDate ?? "") }
                 .prefix(3)
                 .map { episode($0, covers: &covers) }
-            out.append(WidgetShow(id: feed.id, name: feed.title, language: feed.language,
-                                  coverKey: key, isPodcast: true, latest: Array(latest)))
+            out.append(show(id: feed.id, name: feed.title, language: feed.language,
+                            coverURL: feed.coverURL, isPodcast: true,
+                            latest: Array(latest), covers: &covers))
         }
 
+        let seconds = ListeningStatsStore.shared.secondsByProgram()
+        out.sort {
+            let a = seconds[$0.id] ?? 0, b = seconds[$1.id] ?? 0
+            // Never-played shows keep a stable order rather than shuffling.
+            return a == b ? $0.name < $1.name : a > b
+        }
         return Array(out.prefix(12))
+    }
+
+    /// Shows recently played, newest first — including ones that were never
+    /// favorited, which is the common case for a course being worked through.
+    private func recents(covers: inout [String: String]) -> [WidgetShow] {
+        RecentShowsStore.shared.shows.prefix(8).map { entry in
+            show(id: entry.id, name: entry.name, language: entry.language,
+                 coverURL: entry.coverURL, isPodcast: entry.isPodcast,
+                 latest: [], covers: &covers,
+                 lastEpisodeId: entry.lastEpisodeId,
+                 lastEpisodeTitle: entry.lastEpisodeTitle,
+                 lastPlayedAt: entry.playedAt,
+                 resumeProgress: PlaybackPositionStore.shared.progress(for: entry.lastEpisodeId))
+        }
+    }
+
+    private func show(id: String, name: String, language: String, coverURL: String?,
+                      isPodcast: Bool, latest: [WidgetEpisode], covers: inout [String: String],
+                      lastEpisodeId: String? = nil, lastEpisodeTitle: String? = nil,
+                      lastPlayedAt: Date? = nil, resumeProgress: Double? = nil) -> WidgetShow {
+        var key: String?
+        if let coverURL, let k = WidgetShare.coverKey(for: coverURL) {
+            key = k
+            covers[k] = coverURL
+        }
+        return WidgetShow(id: id, name: name, language: language, coverKey: key,
+                          isPodcast: isPodcast, latest: latest,
+                          lastEpisodeId: lastEpisodeId, lastEpisodeTitle: lastEpisodeTitle,
+                          lastPlayedAt: lastPlayedAt, resumeProgress: resumeProgress)
     }
 
     private func stats() -> WidgetStats {
@@ -185,6 +219,11 @@ final class WidgetBridge {
             snapshot.upNext.map(\.id).joined(separator: ","),
             snapshot.shows.map { "\($0.id):\($0.latest.map(\.id).joined(separator: "+"))" }
                 .joined(separator: ","),
+            // Which show was last played, and how far into it — not the exact
+            // offset, so a resume bar nudges forward at most every 5%.
+            snapshot.recentShows.map {
+                "\($0.id):\($0.lastEpisodeId ?? "-"):\(Int(($0.resumeProgress ?? 0) * 20))"
+            }.joined(separator: ","),
         ]
         parts.append("\(snapshot.stats.minutesToday / 5)|\(snapshot.stats.streakDays)|\(snapshot.stats.completedCount)")
         return parts.joined(separator: "#")
