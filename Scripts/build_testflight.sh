@@ -40,6 +40,10 @@ APP_NAME="NerLan"
 TEAM_ID="3WD42GF27D"
 BUNDLE_ID="com.danielkao.NerLan"
 PROFILE_NAME="NerLan App Store"
+# The WidgetKit extension ships inside the app and needs its own App Store
+# profile — manual signing maps every embedded bundle id explicitly.
+WIDGET_BUNDLE_ID="com.danielkao.NerLan.Widgets"
+WIDGET_PROFILE_NAME="NerLan Widgets App Store"
 BUILD_DIR="$PROJECT_DIR/.build"
 ARCHIVE_PATH="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/testflight"
@@ -84,6 +88,8 @@ mkdir -p "$BUILD_DIR"
   echo '    <dict>'
   echo "        <key>$BUNDLE_ID</key>"
   echo "        <string>$PROFILE_NAME</string>"
+  echo "        <key>$WIDGET_BUNDLE_ID</key>"
+  echo "        <string>$WIDGET_PROFILE_NAME</string>"
   echo '    </dict>'
   if [[ "$UPLOAD" == true ]]; then
     echo '    <key>destination</key>'

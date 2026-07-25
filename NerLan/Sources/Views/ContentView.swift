@@ -52,7 +52,11 @@ struct ContentView: View {
         .onChange(of: router.openPlayerSignal) { _, _ in showPlayer = true }
         // Pull anything new from Google Drive on launch (no-op unless Drive sync is
         // on and signed in). iCloud sync starts itself from the store inits.
-        .task { DriveSync.shared.syncNow() }
+        .task {
+            DriveSync.shared.syncNow()
+            // Idempotent; the app delegate normally gets here first.
+            WidgetBridge.shared.start()
+        }
         .onAppear { attachMacToolbar() }
     }
 

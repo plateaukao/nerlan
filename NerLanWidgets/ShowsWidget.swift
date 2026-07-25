@@ -59,8 +59,13 @@ struct ShowsProvider: AppIntentTimelineProvider {
         guard let picked = configuration.shows, !picked.isEmpty else {
             return ShowsEntry(date: Date(), shows: snapshot.shows)
         }
-        let byId = Dictionary(uniqueKeysWithValues:
-            (snapshot.shows + snapshot.recentShows).map { ($0.id, $0) })
+        // `uniquingKeysWith`, not `uniqueKeysWithValues`: a show that is both
+        // favorited and recently played appears in each list, and the duplicate
+        // key would trap — crashing the extension the moment any show was
+        // picked, which is precisely when this branch runs. Prefer the `shows`
+        // entry, which carries the latest-episode data recents omit.
+        let byId = Dictionary((snapshot.shows + snapshot.recentShows).map { ($0.id, $0) },
+                              uniquingKeysWith: { first, _ in first })
         return ShowsEntry(date: Date(), shows: picked.compactMap { byId[$0.id] })
     }
 }

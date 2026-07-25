@@ -21,11 +21,21 @@ final class WidgetBridge {
     /// Signature of the last snapshot written, to suppress no-op reloads.
     private var lastSignature: String?
     private var exportTask: Task<Void, Never>?
+    /// Cover set the export worker should drain next; replaced, not appended to,
+    /// since each snapshot carries the complete set.
+    private var pendingCovers: [String: String] = [:]
 
     private init() {}
 
-    /// Start mirroring app state. Called once, from the app delegate.
+    private var started = false
+
+    /// Start mirroring app state. Idempotent, and called from both the app
+    /// delegate and the root view's `.task` — the delegate is the earliest hook
+    /// (it also has to be in place before a widget's playback intent can arrive),
+    /// but the view callback is the one guaranteed to run.
     func start() {
+        guard !started else { return }
+        started = true
         // Library + player changes: coalesce a burst (e.g. a queue swap emits
         // several) into one write.
         Publishers.MergeMany([
@@ -115,12 +125,8 @@ final class WidgetBridge {
     }
 
     /// Favorited NER programs and subscribed podcasts, each with its newest
-    /// episodes so 最新單集 can render without another lookup.
-    ///
-    /// Ranked by listening time, which is what makes the 我的節目 grid useful when
-    /// more shows are favorited than fit: the ones actually being studied float
-    /// to the top, the way Apple Podcasts orders Top Shows. (The widget can still
-    /// be configured to pin an explicit set — this is just the default order.)
+    /// episodes so 最新單集 can render without another lookup. Ordered so the
+    /// handful the 我的節目 grid can show are the useful ones — see the sort below.
     private func shows(covers: inout [String: String]) -> [WidgetShow] {
         var out: [WidgetShow] = []
 
@@ -145,13 +151,38 @@ final class WidgetBridge {
                             latest: Array(latest), covers: &covers))
         }
 
+        // Recently played first, then by listening time. Ranking on listening
+        // time alone buried every podcast: favorited programs are more numerous
+        // and carry almost all the accumulated time, so a 4-slot grid never
+        // reached one. Pinning podcasts above programs (as the 節目 tab does)
+        // only inverts that. Recency mixes the two kinds on the signal that
+        // actually matters — what's being worked through right now — and the
+        // widget's show picker overrides it for anything deliberate.
+        // `uniquingKeysWith` keeps this total even if a duplicate id ever slipped
+        // into the recents file — a trap here would take the whole app down.
+        let recentRank = Dictionary(
+            RecentShowsStore.shared.shows.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first })
         let seconds = ListeningStatsStore.shared.secondsByProgram()
         out.sort {
-            let a = seconds[$0.id] ?? 0, b = seconds[$1.id] ?? 0
-            // Never-played shows keep a stable order rather than shuffling.
-            return a == b ? $0.name < $1.name : a > b
+            switch (recentRank[$0.id], recentRank[$1.id]) {
+            case let (a?, b?): return a < b
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil):
+                let a = seconds[$0.id] ?? 0, b = seconds[$1.id] ?? 0
+                // Never-played shows keep a stable order rather than shuffling.
+                return a == b ? $0.name < $1.name : a > b
+            }
         }
-        return Array(out.prefix(12))
+
+        // Cap each kind separately. This list also populates the widget's show
+        // picker, so anything dropped here can't be chosen at all — and with ~19
+        // podcasts subscribed, one shared cap would have squeezed the programs
+        // out the moment podcasts moved up.
+        var keep = Set(out.filter(\.isPodcast).prefix(20).map(\.id))
+        keep.formUnion(out.filter { !$0.isPodcast }.prefix(20).map(\.id))
+        return out.filter { keep.contains($0.id) }
     }
 
     /// Shows recently played, newest first — including ones that were never
@@ -234,31 +265,48 @@ final class WidgetBridge {
     /// Mirror each referenced cover into the group container as a small JPEG.
     /// The widget process can't reach the app's Caches folder, and re-downloading
     /// from an extension would be both slow and budget-hostile.
+    /// Export runs are *queued*, never cancelled. Cancelling on each refresh was
+    /// the bug that left widgets with placeholder artwork: launch alone fires
+    /// several refreshes seconds apart, so every export was killed mid-download
+    /// and `covers/` stayed empty. Instead the newest request replaces the
+    /// pending set and one worker drains it to completion.
     private func exportCovers(_ covers: [String: String]) {
-        guard let dir = WidgetShare.coversDir else { return }
-        exportTask?.cancel()
-        exportTask = Task.detached(priority: .utility) {
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            var wroteAny = false
-            for (key, urlString) in covers {
-                if Task.isCancelled { return }
-                let dest = dir.appendingPathComponent(key)
-                guard !FileManager.default.fileExists(atPath: dest.path),
-                      let url = URL(string: urlString),
-                      let image = await CoverImageCache.shared.image(for: url),
-                      let data = Self.thumbnailJPEG(image) else { continue }
-                try? data.write(to: dest, options: .atomic)
-                wroteAny = true
+        pendingCovers = covers
+        guard exportTask == nil else { return }
+        exportTask = Task { [weak self] in
+            while let self, !self.pendingCovers.isEmpty {
+                let batch = self.pendingCovers
+                if await Self.export(batch) { WidgetCenter.shared.reloadAllTimelines() }
+                // A refresh during the export may have queued a different set.
+                if self.pendingCovers == batch { self.pendingCovers = [:] }
             }
-            // Drop covers no longer referenced, so the container doesn't grow.
-            let keep = Set(covers.keys)
-            let existing = (try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil)) ?? []
-            for file in existing where !keep.contains(file.lastPathComponent) {
-                try? FileManager.default.removeItem(at: file)
-            }
-            if wroteAny { WidgetCenter.shared.reloadAllTimelines() }
+            self?.exportTask = nil
         }
+    }
+
+    /// Fetch and downscale anything missing, then drop covers no longer
+    /// referenced so the container doesn't grow. Returns whether anything new
+    /// landed (i.e. whether a reload would show something different).
+    nonisolated private static func export(_ covers: [String: String]) async -> Bool {
+        guard let dir = WidgetShare.coversDir else { return false }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var wroteAny = false
+        for (key, urlString) in covers {
+            let dest = dir.appendingPathComponent(key)
+            guard !FileManager.default.fileExists(atPath: dest.path),
+                  let url = URL(string: urlString),
+                  let image = await CoverImageCache.shared.image(for: url),
+                  let data = thumbnailJPEG(image) else { continue }
+            try? data.write(to: dest, options: .atomic)
+            wroteAny = true
+        }
+        let keep = Set(covers.keys)
+        let existing = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil)) ?? []
+        for file in existing where !keep.contains(file.lastPathComponent) {
+            try? FileManager.default.removeItem(at: file)
+        }
+        return wroteAny
     }
 
     /// Widgets render covers at most ~100pt, so 300px is generous; keeping them
