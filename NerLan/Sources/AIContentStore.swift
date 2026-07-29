@@ -195,6 +195,25 @@ final class AIContentStore: ObservableObject {
         refreshContentIds()
     }
 
+    /// Backfill `episodeNo` on index records saved before the field existed (see
+    /// `EpisodeNumberBackfill`). Updated records are re-pushed to KVS when
+    /// syncing so other devices adopt the numbers too.
+    func applyEpisodeNumbers(_ numbers: [String: Int]) {
+        var changed = false
+        for (id, var record) in records where record.episodeNo == nil {
+            guard let n = numbers[id] else { continue }
+            record.episodeNo = n
+            records[id] = record
+            changed = true
+            if syncingRecords, let data = try? JSONEncoder().encode(record) {
+                CloudKVStore.shared.setDeferred(data, forKey: Self.kvsPrefix + id)
+            }
+        }
+        guard changed else { return }
+        persistIndex()
+        if syncingRecords { CloudKVStore.shared.synchronize() }
+    }
+
     /// Build records for content generated before the index stored them, using
     /// whatever episode records downloads/favorites still hold.
     private func backfillIndex() {

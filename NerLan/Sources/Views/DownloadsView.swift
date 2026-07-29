@@ -55,31 +55,98 @@ struct CapsuleGlass: ViewModifier {
     }
 }
 
-/// Groups records by the chosen key, "其他" for blanks, episodes oldest-first.
+/// Groups records by the chosen key, "其他" for blanks, episodes in course order.
 func groupRecords(_ records: [EpisodeRecord], by grouping: RecordGrouping)
     -> [(key: String, records: [EpisodeRecord])] {
     Dictionary(grouping: records) { grouping.key(for: $0) }
         .map { (key: $0.key.isEmpty ? "其他" : $0.key,
-                records: $0.value.sorted { ($0.playDate ?? "") < ($1.playDate ?? "") }) }
+                records: $0.value.sorted(by: episodeOrder)) }
         .sorted { $0.key < $1.key }
 }
 
-/// Offline episodes, groupable by program or by language.
+/// Course order: episode number first (bulk-published courses share a release
+/// date, so date order degenerates to download/generation order), falling back
+/// to release date — right for podcasts and records saved before `episodeNo`
+/// existed — then title so equal keys stay deterministic.
+private func episodeOrder(_ a: EpisodeRecord, _ b: EpisodeRecord) -> Bool {
+    if let x = a.episodeNo, let y = b.episodeNo, x != y { return x < y }
+    if a.playDate != b.playDate { return (a.playDate ?? "") < (b.playDate ?? "") }
+    return a.title < b.title
+}
+
+/// Which offline copies the Downloads list shows: explicit downloads, streamed-
+/// cache captures, or both (the default).
+enum DownloadFilter: String, CaseIterable, Identifiable {
+    case all = "全部"
+    case downloaded = "已下載"
+    case cached = "快取"
+    var id: String { rawValue }
+}
+
+/// Compact filter menu beside the grouping toggle (and in the Mac sidebar
+/// header). The icon fills in when a filter narrows the list.
+struct DownloadFilterMenu: View {
+    @Binding var selection: DownloadFilter
+
+    var body: some View {
+        Menu {
+            Picker("顯示", selection: $selection) {
+                ForEach(DownloadFilter.allCases) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+        } label: {
+            Image(systemName: selection == .all
+                ? "line.3.horizontal.decrease.circle"
+                : "line.3.horizontal.decrease.circle.fill")
+                .font(.title3)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .modifier(CapsuleGlass())
+    }
+}
+
+/// Offline episodes — explicit downloads plus streamed-cache captures (shown
+/// with a dimmed check) — groupable by program or by language and filterable
+/// by kind.
 struct DownloadsView: View {
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var player: PlayerManager
-    /// AppStorage (not @State) so the Mac sidebar header's toggle — which owns
-    /// this control's spot up there — drives the same value.
+    /// AppStorage (not @State) so the Mac sidebar header's controls — which own
+    /// these controls' spot up there — drive the same values.
     @AppStorage("downloadsGrouping") private var grouping: RecordGrouping = .program
+    @AppStorage("downloadsFilter") private var filter: DownloadFilter = .all
+
+    /// Ids that are cache captures rather than explicit downloads.
+    private var cachedIds: Set<String> {
+        Set(downloads.cachedRecords.map(\.id)).subtracting(downloads.downloadedIds)
+    }
+
+    private var visibleRecords: [EpisodeRecord] {
+        switch filter {
+        case .all:
+            // cachedRecords excludes downloaded ids by construction; the filter
+            // is a belt-and-braces guard against a double row.
+            return downloads.records
+                + downloads.cachedRecords.filter { !downloads.downloadedIds.contains($0.id) }
+        case .downloaded: return downloads.records
+        case .cached: return downloads.cachedRecords
+        }
+    }
+
+    private var hasAnyRecords: Bool {
+        !downloads.records.isEmpty || !downloads.cachedRecords.isEmpty
+    }
 
     private var grouped: [(key: String, records: [EpisodeRecord])] {
-        groupRecords(downloads.records, by: grouping)
+        groupRecords(visibleRecords, by: grouping)
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if downloads.records.isEmpty {
+                if !hasAnyRecords {
                     VStack(spacing: 0) {
                         // On Mac the sidebar's segmented header replaces the title.
                         #if !targetEnvironment(macCatalyst)
@@ -90,7 +157,23 @@ struct DownloadsView: View {
                                                description: Text("在節目頁面點選下載按鈕，即可離線收聽。"))
                             .frame(maxHeight: .infinity)
                     }
+                } else if visibleRecords.isEmpty {
+                    // Everything is hidden by the current filter; keep the
+                    // title (and the pinned controls) so it can be switched back.
+                    VStack(spacing: 0) {
+                        #if !targetEnvironment(macCatalyst)
+                        TopTitle(text: "下載")
+                        #endif
+                        ContentUnavailableView(
+                            filter == .cached ? "沒有快取的單集" : "沒有下載的單集",
+                            systemImage: filter == .cached ? "arrow.down.circle.dotted" : "arrow.down.circle",
+                            description: Text(filter == .cached
+                                ? "開啟串流快取後，播放過的單集會保留在這裡。"
+                                : "在節目頁面點選下載按鈕，即可離線收聽。"))
+                            .frame(maxHeight: .infinity)
+                    }
                 } else {
+                    let cached = cachedIds
                     List {
                         #if !targetEnvironment(macCatalyst)
                         ScrollAwayTitle(text: "下載")
@@ -98,7 +181,8 @@ struct DownloadsView: View {
                         ForEach(grouped, id: \.key) { group in
                             Section(group.key) {
                                 ForEach(group.records) { record in
-                                    RecordRow(record: record, queue: group.records)
+                                    RecordRow(record: record, queue: group.records,
+                                              downloadBadge: cached.contains(record.id) ? .cached : .downloaded)
                                 }
                                 .onDelete { offsets in
                                     for i in offsets {
@@ -112,15 +196,18 @@ struct DownloadsView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            // Pin the grouping switch in the top-trailing corner, aligned with
-            // the title — only when there's something to group. (On Mac it
-            // lives in the sidebar header instead.)
+            // Pin the filter + grouping controls in the top-trailing corner,
+            // aligned with the title — only when there's something to show.
+            // (On Mac they live in the sidebar header instead.)
             #if !targetEnvironment(macCatalyst)
             .overlay(alignment: .topTrailing) {
-                if !downloads.records.isEmpty {
-                    GroupingToggle(selection: $grouping)
-                        .padding(.trailing, 12)
-                        .padding(.top, 8)
+                if hasAnyRecords {
+                    HStack(spacing: 8) {
+                        DownloadFilterMenu(selection: $filter)
+                        GroupingToggle(selection: $grouping)
+                    }
+                    .padding(.trailing, 12)
+                    .padding(.top, 8)
                 }
             }
             #endif
@@ -128,10 +215,19 @@ struct DownloadsView: View {
     }
 }
 
+/// How a Downloads-list row got its local audio, shown as a trailing badge:
+/// a real (user-initiated) download, or a copy captured while streaming.
+enum DownloadBadge {
+    case downloaded, cached
+}
+
 /// Shared row for downloads & favorites lists.
 struct RecordRow: View {
     let record: EpisodeRecord
     let queue: [EpisodeRecord]
+    /// Set only in the Downloads tab: marks the row as a real download (green
+    /// check) or a streamed-cache capture (dimmed check).
+    var downloadBadge: DownloadBadge? = nil
     /// In the AI tab: show transcript/handout buttons only for content that
     /// already exists (regardless of whether an API key is set), so the user can
     /// open it without seeing idle "generate" buttons.
@@ -225,6 +321,12 @@ struct RecordRow: View {
                     AIActionButton(kind: .transcript, record: record, compact: true)
                     AIActionButton(kind: .handout, record: record, compact: true)
                 }
+            }
+
+            if let downloadBadge {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(downloadBadge == .downloaded
+                        ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
             }
         }
     }

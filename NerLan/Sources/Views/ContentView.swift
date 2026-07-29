@@ -18,9 +18,10 @@ struct ContentView: View {
     #if targetEnvironment(macCatalyst)
     /// Mac left column: which section the segmented header shows.
     @AppStorage("macSidebarTab") private var macSidebarTab = 0
-    // Shared with DownloadsView / AITabView, whose grouping toggles move up
-    // into the header on Mac.
+    // Shared with DownloadsView / AITabView, whose grouping toggles (and the
+    // downloads filter) move up into the header on Mac.
     @AppStorage("downloadsGrouping") private var downloadsGrouping: RecordGrouping = .program
+    @AppStorage("downloadsFilter") private var downloadsFilter: DownloadFilter = .all
     @AppStorage("aiGrouping") private var aiGrouping: RecordGrouping = .program
     #endif
 
@@ -171,7 +172,8 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                 }
                 .help("加入 Podcast")
-            case 2 where !downloads.records.isEmpty:
+            case 2 where !downloads.records.isEmpty || !downloads.cachedRecords.isEmpty:
+                DownloadFilterMenu(selection: $downloadsFilter)
                 GroupingToggle(selection: $downloadsGrouping)
             case 3 where !ai.aiRecords.isEmpty:
                 GroupingToggle(selection: $aiGrouping)

@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // the handler exists before any such intent can be delivered.
         PlaybackBridge.handler = PlayerManager.shared
         WidgetBridge.shared.start()
+        // Fill episode numbers into records persisted before the field existed,
+        // so the Downloads/AI lists sort in course order (no-op once done).
+        Task { await EpisodeNumberBackfill.run() }
         return true
     }
 }

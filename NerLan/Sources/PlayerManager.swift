@@ -86,8 +86,9 @@ final class PlayerManager: ObservableObject {
     /// plus the episode it belongs to, so its completed buffer is saved under the
     /// right id. Only one is ever live — the previous one is stopped on each load.
     private var cachingItem: CachingPlayerItem?
-    private var cachingEpisodeId: String?
-    private var cachingAudioExt: String?
+    /// The episode the caching item is streaming, kept whole so the finished
+    /// file can be filed with its record (the Downloads tab lists cached copies).
+    private var cachingRecord: EpisodeRecord?
 
     private init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
@@ -164,24 +165,26 @@ final class PlayerManager: ObservableObject {
         // Discard any still-streaming caching item from the previous episode.
         cachingItem?.stopDownloading()
         cachingItem = nil
-        cachingEpisodeId = nil
-        cachingAudioExt = nil
+        cachingRecord = nil
         lastTick = nil   // don't count the gap across an episode change
         clearLoop()      // a sentence loop never carries across episodes
 
         // Prefer an offline copy — an explicit download first, then a streamed
         // cache copy — and only then stream from the network.
         let item: AVPlayerItem
-        if let local = DownloadManager.shared.localAssetURL(episodeId: record.id)
-            ?? DownloadManager.shared.cachedAssetURL(episodeId: record.id) {
+        if let local = DownloadManager.shared.localAssetURL(episodeId: record.id) {
             item = AVPlayerItem(asset: AVURLAsset(url: local))
+        } else if let cached = DownloadManager.shared.cachedAssetURL(episodeId: record.id) {
+            item = AVPlayerItem(asset: AVURLAsset(url: cached))
+            // Backfills records for files cached before records were kept, so
+            // they surface in the Downloads tab once replayed.
+            DownloadManager.shared.noteCachedEpisode(record)
         } else if let remote = record.audio.flatMap(URL.init(string:)) {
             if SettingsStore.shared.cacheStreamedAudio {
                 let caching = CachingPlayerItem(url: remote)
                 caching.cacheDelegate = self
                 cachingItem = caching
-                cachingEpisodeId = record.id
-                cachingAudioExt = record.audioFileExtension
+                cachingRecord = record
                 item = caching
             } else {
                 item = AVPlayerItem(asset: AVURLAsset(url: remote))
@@ -446,12 +449,11 @@ final class PlayerManager: ObservableObject {
 extension PlayerManager: CachingPlayerItemDelegate {
     nonisolated func cachingPlayerItem(_ item: CachingPlayerItem, didFinishDownloadingTo fileURL: URL) {
         Task { @MainActor [weak self] in
-            guard let self, item === self.cachingItem, let id = self.cachingEpisodeId else {
+            guard let self, item === self.cachingItem, let record = self.cachingRecord else {
                 try? FileManager.default.removeItem(at: fileURL)
                 return
             }
-            DownloadManager.shared.storeCachedAudio(fileAt: fileURL, episodeId: id,
-                                                    ext: self.cachingAudioExt ?? "mp3")
+            DownloadManager.shared.storeCachedAudio(fileAt: fileURL, record: record)
         }
     }
 }

@@ -56,6 +56,22 @@ final class FavoritesStore: ObservableObject {
         DriveSync.requestSync()
     }
 
+    /// Backfill `episodeNo` on favorites saved before the field existed (see
+    /// `EpisodeNumberBackfill`). Writes through to KVS when syncing — a later
+    /// `adoptFromKVS` replaces the local set wholesale, so un-pushed numbers
+    /// would be lost again.
+    func applyEpisodeNumbers(_ numbers: [String: Int]) {
+        guard EpisodeNumberBackfill.apply(numbers, to: &favorites) else { return }
+        try? JSONEncoder().encode(favorites).write(to: episodesURL)
+        guard syncing else { return }
+        for record in favorites where numbers[record.id] != nil {
+            if let data = try? JSONEncoder().encode(record) {
+                CloudKVStore.shared.setDeferred(data, forKey: epKey(record.id))
+            }
+        }
+        CloudKVStore.shared.synchronize()
+    }
+
     // MARK: - Programs
 
     func isFavorite(programId: String) -> Bool {

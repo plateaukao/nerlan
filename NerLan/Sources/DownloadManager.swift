@@ -17,6 +17,11 @@ final class DownloadManager: NSObject, ObservableObject {
     /// `isDownloaded` (hit by every episode row on every render) is a set
     /// lookup instead of up to 7 `fileExists` stats on the main thread.
     @Published private(set) var downloadedIds: Set<String> = []
+    /// Records for episodes captured by the streamed-audio cache, so the
+    /// Downloads tab can list them (dimmed) alongside explicit downloads. The
+    /// metadata lives in Documents (`cached.json`) but the audio stays in
+    /// Caches, so entries are pruned on launch when the system purged the file.
+    @Published private(set) var cachedRecords: [EpisodeRecord] = []
 
     /// What a background download task is fetching: an episode's audio, or one
     /// of its attachments. Attachments piggyback on the audio download so they
@@ -30,17 +35,20 @@ final class DownloadManager: NSObject, ObservableObject {
     private var tasks: [Int: TaskTarget] = [:]   // taskIdentifier -> target
 
     private let recordsURL: URL
+    private let cachedRecordsURL: URL
     private let audioDir: URL
     private let attachmentsDir: URL
     /// Audio captured while streaming (opt-in). Kept separate from explicit
-    /// downloads: it lives in Caches (purgeable, not iCloud-backed), never shows
-    /// in the Downloads tab, and is wiped as a unit by "clear cached audio".
+    /// downloads: it lives in Caches (purgeable, not iCloud-backed), shows
+    /// dimmed in the Downloads tab, and is wiped as a unit by "clear cached
+    /// audio".
     private let cacheDir: URL
 
     override private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         recordsURL = docs.appendingPathComponent("downloads.json")
+        cachedRecordsURL = docs.appendingPathComponent("cached.json")
         audioDir = docs.appendingPathComponent("audio", isDirectory: true)
         attachmentsDir = docs.appendingPathComponent("attachments", isDirectory: true)
         cacheDir = caches.appendingPathComponent("audio", isDirectory: true)
@@ -55,6 +63,17 @@ final class DownloadManager: NSObject, ObservableObject {
         }
         let audioFiles = (try? FileManager.default.contentsOfDirectory(at: audioDir, includingPropertiesForKeys: nil)) ?? []
         downloadedIds = Set(audioFiles.map { $0.deletingPathExtension().lastPathComponent })
+
+        // Cached records only count while their audio actually survives in
+        // Caches (the system may have purged it) and hasn't since been
+        // superseded by an explicit download.
+        if let data = try? Data(contentsOf: cachedRecordsURL),
+           let saved = try? JSONDecoder().decode([EpisodeRecord].self, from: data) {
+            let cacheFiles = (try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil)) ?? []
+            let cachedIds = Set(cacheFiles.map { $0.deletingPathExtension().lastPathComponent })
+            cachedRecords = saved.filter { cachedIds.contains($0.id) && !downloadedIds.contains($0.id) }
+            if cachedRecords.count != saved.count { persistCached() }
+        }
 
         let config = URLSessionConfiguration.background(withIdentifier: "com.danielkao.nerlan.downloads")
         session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
@@ -158,19 +177,32 @@ final class DownloadManager: NSObject, ObservableObject {
     /// (so AAC plays back correctly). No-op — and the temp file is discarded —
     /// if it's already an explicit download (that copy takes precedence and
     /// shouldn't be duplicated).
-    func storeCachedAudio(fileAt url: URL, episodeId: String, ext: String = "mp3") {
-        guard !isDownloaded(episodeId: episodeId) else {
+    func storeCachedAudio(fileAt url: URL, record: EpisodeRecord) {
+        guard !isDownloaded(episodeId: record.id) else {
             try? FileManager.default.removeItem(at: url)
             return
         }
-        let dest = cacheDir.appendingPathComponent("\(episodeId).\(ext)")
+        let dest = cacheDir.appendingPathComponent("\(record.id).\(record.audioFileExtension)")
         try? FileManager.default.removeItem(at: dest)
         try? FileManager.default.moveItem(at: url, to: dest)
+        noteCachedEpisode(record)
+    }
+
+    /// Register the record for a cache-resident episode so the Downloads tab
+    /// can list it. Also called when the player plays from an existing cache
+    /// file, which backfills entries cached before records were kept.
+    func noteCachedEpisode(_ record: EpisodeRecord) {
+        guard !isDownloaded(episodeId: record.id),
+              !cachedRecords.contains(where: { $0.id == record.id }) else { return }
+        cachedRecords.append(record)
+        persistCached()
     }
 
     func clearAudioCache() {
         let items = (try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil)) ?? []
         for item in items { try? FileManager.default.removeItem(at: item) }
+        cachedRecords.removeAll()
+        persistCached()
     }
 
     func cachedAudioByteSize() -> Int64 { Self.directoryByteSize(cacheDir) }
@@ -231,6 +263,8 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
+    /// Remove an episode's local audio — the explicit download and/or the
+    /// streamed-cache copy, whichever exist (the Downloads list mixes both).
     func delete(episodeId: String) {
         if let url = localAssetURL(episodeId: episodeId) {
             try? FileManager.default.removeItem(at: url)
@@ -243,10 +277,28 @@ final class DownloadManager: NSObject, ObservableObject {
         }
         records.removeAll { $0.id == episodeId }
         persist()
+        if let cached = cachedAssetURL(episodeId: episodeId) {
+            try? FileManager.default.removeItem(at: cached)
+        }
+        if cachedRecords.contains(where: { $0.id == episodeId }) {
+            cachedRecords.removeAll { $0.id == episodeId }
+            persistCached()
+        }
+    }
+
+    /// Backfill `episodeNo` on records saved before the field existed
+    /// (see `EpisodeNumberBackfill`).
+    func applyEpisodeNumbers(_ numbers: [String: Int]) {
+        if EpisodeNumberBackfill.apply(numbers, to: &records) { persist() }
+        if EpisodeNumberBackfill.apply(numbers, to: &cachedRecords) { persistCached() }
     }
 
     private func persist() {
         try? JSONEncoder().encode(records).write(to: recordsURL)
+    }
+
+    private func persistCached() {
+        try? JSONEncoder().encode(cachedRecords).write(to: cachedRecordsURL)
     }
 }
 
@@ -270,6 +322,10 @@ extension DownloadManager: URLSessionDownloadDelegate {
                 // An explicit download supersedes any streamed-cache copy.
                 if let cached = cachedAssetURL(episodeId: record.id) {
                     try? FileManager.default.removeItem(at: cached)
+                }
+                if cachedRecords.contains(where: { $0.id == record.id }) {
+                    cachedRecords.removeAll { $0.id == record.id }
+                    persistCached()
                 }
                 if !records.contains(where: { $0.id == record.id }) {
                     records.append(record)

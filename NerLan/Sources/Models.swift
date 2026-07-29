@@ -188,6 +188,11 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
     // is unknown. nil for NER programs, which are bilingual (Mandarin host + foreign
     // examples) and must not be forced. Presence (non-nil) marks a podcast.
     let audioLocale: String?
+    // Course sequence number, so the Downloads/AI lists sort in lesson order
+    // (bulk-published courses share a release date, which makes date order
+    // meaningless). Optional: podcasts lack it, and records persisted before it
+    // existed decode nil — `EpisodeNumberBackfill` fills those in (hence `var`).
+    var episodeNo: Int?
 
     /// PDF attachments, the only kind we can render inline.
     var pdfAttachments: [Attachment] { (attachments ?? []).filter(\.isPDF) }
@@ -242,13 +247,15 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.durationSeconds = episode.duration
         self.audioExt = nil   // NER audio is mp3
         self.audioLocale = nil   // NER programs are bilingual; never force a language
+        self.episodeNo = episode.episodeNumber
     }
 
     /// Raw initializer for records built outside the NER API (e.g. podcast feeds).
     init(id: String, title: String, playDate: String?, audio: String?,
          programId: String, programName: String, language: String,
          coverURL: String?, durationSeconds: Int? = nil, audioExt: String? = nil,
-         audioLocale: String? = nil, attachments: [Attachment]? = nil) {
+         audioLocale: String? = nil, attachments: [Attachment]? = nil,
+         episodeNo: Int? = nil) {
         self.id = id
         self.title = title
         self.playDate = playDate
@@ -261,5 +268,6 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.audioExt = audioExt
         self.audioLocale = audioLocale
         self.attachments = attachments
+        self.episodeNo = episodeNo
     }
 }
