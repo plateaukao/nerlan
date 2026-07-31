@@ -188,6 +188,8 @@ struct EpisodeRow: View {
     @EnvironmentObject var player: PlayerManager
     @EnvironmentObject var downloads: DownloadManager
     @EnvironmentObject var favorites: FavoritesStore
+    @EnvironmentObject var notes: EpisodeNotesStore
+    @State private var editingNote = false
 
     private var isCurrent: Bool { player.current?.id == episode.id }
     private var playable: Bool { episode.audioURL != nil }
@@ -219,6 +221,9 @@ struct EpisodeRow: View {
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        if let note = notes.note(for: episode.id) {
+                            EpisodeNoteText(text: note)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -236,6 +241,26 @@ struct EpisodeRow: View {
             .buttonStyle(.borderless)
 
             DownloadStateButton(record: record, enabled: playable)
+        }
+        // Titles are often just "EP12" — a swipe (or long-press) opens the note
+        // editor so the user can record what the episode actually covers.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button { editingNote = true } label: {
+                Label("註記", systemImage: "square.and.pencil")
+            }
+            .tint(.orange)
+        }
+        .contextMenu {
+            Button {
+                editingNote = true
+            } label: {
+                Label(notes.note(for: episode.id) == nil ? "新增註記" : "編輯註記",
+                      systemImage: "square.and.pencil")
+            }
+        }
+        .sheet(isPresented: $editingNote) {
+            EpisodeNoteEditor(episodeId: episode.id, episodeTitle: episode.displayTitle)
+                .appEnvironment()
         }
     }
 }

@@ -137,11 +137,13 @@ final class SettingsStore: ObservableObject {
             if syncToICloud {
                 AIContentStore.shared.enableICloudSync()
                 FavoritesStore.shared.enableSync()
+                EpisodeNotesStore.shared.enableSync()
                 ListeningStatsStore.shared.enableSync()
                 PodcastStore.shared.enableSync()
             } else {
                 AIContentStore.shared.disableICloudSync()
                 FavoritesStore.shared.disableSync()
+                EpisodeNotesStore.shared.disableSync()
                 ListeningStatsStore.shared.disableSync()
                 PodcastStore.shared.disableSync()
             }

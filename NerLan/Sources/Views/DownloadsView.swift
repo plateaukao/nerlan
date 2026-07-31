@@ -249,7 +249,9 @@ struct RecordRow: View {
     @EnvironmentObject var ai: AIContentStore
     @EnvironmentObject var favorites: FavoritesStore
     @EnvironmentObject var downloads: DownloadManager
+    @EnvironmentObject var notes: EpisodeNotesStore
     @State private var showAttachment = false
+    @State private var editingNote = false
 
     private var isCurrent: Bool { player.current?.id == record.id }
 
@@ -272,6 +274,9 @@ struct RecordRow: View {
                         Text(subtitleOverride ?? "\(record.programName) · \(record.language)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let note = notes.note(for: record.id) {
+                            EpisodeNoteText(text: note)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -328,6 +333,20 @@ struct RecordRow: View {
                     .foregroundStyle(downloadBadge == .downloaded
                         ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
             }
+        }
+        // Long-press only (no swipe action) so the Downloads/Favorites
+        // swipe-to-delete keeps working.
+        .contextMenu {
+            Button {
+                editingNote = true
+            } label: {
+                Label(notes.note(for: record.id) == nil ? "新增註記" : "編輯註記",
+                      systemImage: "square.and.pencil")
+            }
+        }
+        .sheet(isPresented: $editingNote) {
+            EpisodeNoteEditor(episodeId: record.id, episodeTitle: record.title)
+                .appEnvironment()
         }
     }
 

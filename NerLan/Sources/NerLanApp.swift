@@ -129,6 +129,7 @@ extension View {
             .environmentObject(PlayerManager.shared)
             .environmentObject(DownloadManager.shared)
             .environmentObject(FavoritesStore.shared)
+            .environmentObject(EpisodeNotesStore.shared)
             .environmentObject(PodcastStore.shared)
             .environmentObject(SettingsStore.shared)
             .environmentObject(AIContentStore.shared)
