@@ -218,10 +218,12 @@ struct TranscriptView: View {
     private var bodyLineSpacing: CGFloat { bodyFontSize * 0.3 }
 
     /// The transcription job's status note while it's still running for this
-    /// episode (drives the streaming footer), else nil.
+    /// episode (drives the streaming footer), else nil. Carries the estimated
+    /// percentage when the store has one.
     private var transcriptRunningNote: String? {
-        if case .running(let note)? = ai.jobState(.transcript, episodeId) { return note }
-        return nil
+        guard case .running(let note)? = ai.jobState(.transcript, episodeId) else { return nil }
+        guard let progress = ai.transcriptProgress[episodeId] else { return note }
+        return "\(note) \(Int((progress * 100).rounded()))%"
     }
 
     private var translationJob: AIContentStore.JobState? { ai.translationJob(episodeId) }

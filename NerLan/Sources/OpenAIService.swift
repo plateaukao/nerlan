@@ -63,23 +63,32 @@ enum OpenAIService {
 
     /// Result of a transcription: the full text plus, when the model supports it,
     /// the per-segment timestamps. `segments` is empty for models that return no
-    /// timing (see `supportsSegments`), in which case only `text` is meaningful.
+    /// timing (see `timestampStyle`), in which case only `text` is meaningful.
     struct TranscriptionResult {
         let text: String
         let segments: [Segment]
     }
 
-    /// Whether a transcription model returns segment timestamps. Only `whisper-1`
-    /// supports `response_format=verbose_json`; the `gpt-4o-transcribe` models
-    /// accept `json`/`text` only and would reject `verbose_json`.
-    static func supportsSegments(model: String) -> Bool {
-        model.lowercased().contains("whisper")
+    /// How a transcription model reports segment timing. `whisper-1` supports
+    /// `response_format=verbose_json`; `gpt-4o-transcribe-diarize` reports
+    /// speaker-labelled timed segments via `diarized_json`; the plain
+    /// `gpt-4o-transcribe` models accept `json`/`text` only and yield no timing.
+    enum TimestampStyle {
+        case verboseJSON, diarizedJSON, none
+    }
+
+    static func timestampStyle(model: String) -> TimestampStyle {
+        let m = model.lowercased()
+        if m.contains("whisper") { return .verboseJSON }
+        if m.contains("diarize") { return .diarizedJSON }
+        return .none
     }
 
     /// Transcribe an audio file via `POST /audio/transcriptions` (multipart).
-    /// Whisper models are asked for `verbose_json` so the per-segment timestamps
-    /// come back (used to highlight the playing sentence); other models, which
-    /// don't support it, get `response_format=text` and yield no segments.
+    /// Whisper models are asked for `verbose_json` and gpt-4o-transcribe-diarize
+    /// for `diarized_json`, so the per-segment timestamps come back (used to
+    /// highlight the playing sentence); the remaining models, which support
+    /// neither, get `response_format=text` and yield no segments.
     ///
     /// `prompt` biases Whisper's output script/vocabulary. These are bilingual
     /// teaching programs (Mandarin host + foreign examples); without a prompt
@@ -91,28 +100,44 @@ enum OpenAIService {
     /// for monolingual sources (podcasts) so it transcribes in that language
     /// instead of collapsing toward the prompt's. Left nil for bilingual NER
     /// content, which relies on the prompt and per-passage detection instead.
+    /// gpt-4o-transcribe-diarize rejects `prompt` outright (and `language` is
+    /// undocumented for it), so both are omitted there — it detects each spoken
+    /// language natively, which is what makes it good for code-switched audio.
     static func transcribe(fileURL: URL, config: Config,
                            prompt: String? = nil, language: String? = nil) async throws -> TranscriptionResult {
         guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
-        let wantSegments = supportsSegments(model: config.model)
+        let style = timestampStyle(model: config.model)
 
         let fileData = try Data(contentsOf: fileURL)
         let (req, body) = transcriptionRequest(config: config) { form in
             form.field("model", config.model)
-            form.field("response_format", wantSegments ? "verbose_json" : "text")
-            if let language, !language.isEmpty { form.field("language", language) }
-            if let prompt, !prompt.isEmpty { form.field("prompt", prompt) }
+            switch style {
+            case .verboseJSON:
+                form.field("response_format", "verbose_json")
+            case .diarizedJSON:
+                form.field("response_format", "diarized_json")
+                // The API requires a chunking strategy for audio over 30 s.
+                form.field("chunking_strategy", "auto")
+            case .none:
+                form.field("response_format", "text")
+            }
+            if style != .diarizedJSON {
+                if let language, !language.isEmpty { form.field("language", language) }
+                if let prompt, !prompt.isEmpty { form.field("prompt", prompt) }
+            }
             form.file("file", filename: fileURL.lastPathComponent,
                       contentType: "application/octet-stream", data: fileData)
         }
         let (data, response) = try await session.upload(for: req, from: body)
         try check(response, data)
 
-        guard wantSegments else {
+        guard style != .none else {
             guard let text = String(data: data, encoding: .utf8) else { throw APIError.decode }
             return TranscriptionResult(text: text.trimmingCharacters(in: .whitespacesAndNewlines), segments: [])
         }
-        // verbose_json: { "text": "...", "segments": [ { "start": 0.0, "text": "..." }, ... ] }
+        // verbose_json:  { "text": "...", "segments": [ { "start": 0.0, "text": "..." }, ... ] }
+        // diarized_json: { "segments": [ { "start": 0.0, "end": 4.2, "text": "...", "speaker": "A" }, ... ] }
+        // Both carry "start" + "text" per segment, which is all we keep.
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw APIError.decode
         }
@@ -121,7 +146,12 @@ enum OpenAIService {
             return Segment(start: start, text: text)
         } ?? []
         let full = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let text = full.isEmpty ? segments.map(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines) : full
+        // Whisper segment text carries its own leading spaces; diarized segments
+        // don't, so join those with a separator to keep words apart.
+        let joined = style == .diarizedJSON
+            ? segments.map { $0.text.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+            : segments.map(\.text).joined()
+        let text = full.isEmpty ? joined.trimmingCharacters(in: .whitespacesAndNewlines) : full
         guard !text.isEmpty else { throw APIError.decode }
         return TranscriptionResult(text: text, segments: segments)
     }

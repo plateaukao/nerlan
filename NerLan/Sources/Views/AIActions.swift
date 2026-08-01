@@ -82,7 +82,13 @@ struct AIActionButton: View {
         } else {
             VStack(spacing: 4) {
                 icon(running: running, ready: ready, failed: failed).font(.title3)
-                Text(title).font(.caption2)
+                // While transcribing, the caption doubles as the progress readout.
+                if running, kind == .transcript, let progress = ai.transcriptProgress[record.id] {
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.caption2).monospacedDigit()
+                } else {
+                    Text(title).font(.caption2)
+                }
             }
         }
     }

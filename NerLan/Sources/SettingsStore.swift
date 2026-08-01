@@ -32,8 +32,12 @@ final class SettingsStore: ObservableObject {
 
     /// Selectable transcription models. whisper-1 collapses bilingual audio into
     /// the dominant language; the gpt-4o-transcribe models handle code-switching
-    /// far better (see OpenAIService.transcribe).
-    static let transcriptionModelOptions = ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"]
+    /// far better (see OpenAIService.transcribe). Of those, only
+    /// gpt-4o-transcribe-diarize returns segment timestamps (diarized_json), so
+    /// it's the one that combines 4o-level accuracy with transcript highlighting.
+    static let transcriptionModelOptions = [
+        "whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-4o-transcribe-diarize",
+    ]
 
     private static let keychainAccount = "openai-api-key"
     private static let chatModelKey = "openaiChatModel"

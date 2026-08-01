@@ -8,20 +8,32 @@ enum SpeechAudioExporter {
     /// Max audio duration per transcription request. The gpt-4o-transcribe models
     /// reject audio longer than 1400 s; we split below that with margin. whisper-1
     /// has no duration cap, but chunking it as well keeps one code path and is
-    /// harmless (the per-chunk transcripts are concatenated).
+    /// harmless (the per-chunk transcripts are concatenated). Callers can pass a
+    /// shorter `maxSeconds` for slow models (see AIContentStore.runTranscript).
     static let maxChunkSeconds: Double = 1200
 
     /// Transcode the audio and split it into chunks each no longer than
-    /// `maxChunkSeconds`, returned in order (caller deletes the temp files). A
+    /// `maxSeconds`, returned in order (caller deletes the temp files). A
     /// short episode yields a single chunk. Falls back to `[sourceURL]` if
     /// transcoding isn't possible.
-    static func exportChunks(_ sourceURL: URL) async -> [URL] {
-        (try? await transcodeChunks(sourceURL)) ?? [sourceURL]
+    static func exportChunks(_ sourceURL: URL, maxSeconds: Double = maxChunkSeconds) async -> [URL] {
+        (try? await transcodeChunks(sourceURL, maxSeconds: maxSeconds)) ?? [sourceURL]
+    }
+
+    /// Best-effort durations of the given audio files, in seconds (0 where a
+    /// file's duration can't be read). Used for transcription progress estimates.
+    static func durations(of urls: [URL]) async -> [Double] {
+        var out: [Double] = []
+        for url in urls {
+            let seconds = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+            out.append(seconds.isFinite ? max(seconds, 0) : 0)
+        }
+        return out
     }
 
     private enum Failure: Error { case noAudioTrack, cannotRead, cannotWrite }
 
-    private static func transcodeChunks(_ sourceURL: URL) async throws -> [URL] {
+    private static func transcodeChunks(_ sourceURL: URL, maxSeconds: Double) async throws -> [URL] {
         let asset = AVURLAsset(url: sourceURL)
         guard try await asset.loadTracks(withMediaType: .audio).first != nil else {
             throw Failure.noAudioTrack
@@ -29,15 +41,15 @@ enum SpeechAudioExporter {
         let duration = try await asset.load(.duration).seconds
         guard duration.isFinite, duration > 0 else { throw Failure.cannotRead }
 
-        if duration <= maxChunkSeconds {
+        if duration <= maxSeconds {
             return [try await transcode(sourceURL, timeRange: nil)]
         }
-        let chunkCount = Int((duration / maxChunkSeconds).rounded(.up))
+        let chunkCount = Int((duration / maxSeconds).rounded(.up))
         var urls: [URL] = []
         do {
             for i in 0..<chunkCount {
-                let start = Double(i) * maxChunkSeconds
-                let length = min(maxChunkSeconds, duration - start)
+                let start = Double(i) * maxSeconds
+                let length = min(maxSeconds, duration - start)
                 let range = CMTimeRange(
                     start: CMTime(seconds: start, preferredTimescale: 600),
                     duration: CMTime(seconds: length, preferredTimescale: 600))

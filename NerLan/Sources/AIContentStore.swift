@@ -39,6 +39,12 @@ final class AIContentStore: ObservableObject {
     /// id; absence means no job is in flight (use the saved file). See `PartialTranscript`.
     @Published private(set) var partialTranscripts: [String: PartialTranscript] = [:]
 
+    /// Estimated overall progress (0–1) of a running transcription, keyed by
+    /// episode id; absent when idle or when chunk durations couldn't be read.
+    /// Audio-seconds finished so far plus a wall-clock estimate inside the
+    /// current chunk — see `runTranscript` / `progressTicker`.
+    @Published private(set) var transcriptProgress: [String: Double] = [:]
+
     /// Translation streamed per batch (~40 sentences) while a translation job runs,
     /// keyed by episode id, so the transcript screen fills in top-down. Carries its
     /// target language so a partial for the wrong language is ignored. Cleared on completion.
@@ -524,18 +530,28 @@ final class AIContentStore: ObservableObject {
         let k = key(.transcript, record.id)
         let settings = SettingsStore.shared
         jobs[k] = .running("處理音訊中…")
+        defer { transcriptProgress.removeValue(forKey: record.id) }
         do {
             guard let source = try await audioFileURL(for: record) else {
                 throw OpenAIService.APIError.server("找不到音訊檔")
             }
             jobs[k] = .running("轉錄中…")
+            let txConfig = settings.transcriptionConfig
             // Long episodes are split into ~20-minute chunks (the gpt-4o-transcribe
-            // models cap input at 1400 s). Each chunk is transcribed, re-segmented
-            // and aligned on its own, then appended and published — so the viewer
-            // can show the first chunk while later chunks are still transcribing,
-            // rather than waiting for the whole episode. Whisper returns per-segment
+            // models cap input at 1400 s). gpt-4o-transcribe-diarize gets 5-minute
+            // chunks instead: it processes far slower than the others, and a
+            // 20-minute chunk can sit past the 5-minute between-bytes timeout and
+            // fail after a long wait — short chunks keep each request comfortably
+            // inside it and stream results (and progress) much sooner.
+            // Each chunk is transcribed, re-segmented and aligned on its own, then
+            // appended and published — so the viewer can show the first chunk while
+            // later chunks are still transcribing, rather than waiting for the
+            // whole episode. Models with timing (whisper via verbose_json,
+            // gpt-4o-transcribe-diarize via diarized_json) return per-segment
             // timestamps (shifted to absolute episode time) to drive highlighting.
-            let chunks = await SpeechAudioExporter.exportChunks(source)
+            let diarize = OpenAIService.timestampStyle(model: txConfig.model) == .diarizedJSON
+            let chunkSeconds = diarize ? 300 : SpeechAudioExporter.maxChunkSeconds
+            let chunks = await SpeechAudioExporter.exportChunks(source, maxSeconds: chunkSeconds)
             defer { cleanupChunks(chunks, original: source) }
             // A monolingual source (a podcast) carries its locale: force that
             // language and drop the Chinese teaching-program prompt, which would
@@ -544,18 +560,34 @@ final class AIContentStore: ObservableObject {
             // priming prompt and no forced language, letting whisper switch per passage.
             let locale = record.audioLocale
             let prompt = locale == nil ? OpenAIService.transcriptionPrompt(for: record.language) : nil
-            let txConfig = settings.transcriptionConfig
             let chatConfig = settings.chatConfig
             let multi = chunks.count > 1
+            // Progress estimate: chunk audio lengths give the overall scale; the
+            // per-audio-second processing rate is seeded per model and refined
+            // from each finished chunk (transcription + sentence cleanup).
+            let durations = await SpeechAudioExporter.durations(of: chunks)
+            let totalSeconds = durations.reduce(0, +)
+            let showProgress = totalSeconds > 0 && durations.allSatisfy { $0 > 0 }
+            var rate = diarize ? 0.5 : 0.2
+            var doneSeconds = 0.0
             var sentences: [String] = []
             var cues: [TranscriptCue] = []
             // Cues stay usable only while every chunk so far yields timestamps; once
-            // one doesn't (e.g. a non-whisper model), the transcript renders without
-            // highlighting rather than with cues that drift out of alignment.
+            // one doesn't (e.g. a model with no timing support), the transcript
+            // renders without highlighting rather than with cues that drift out
+            // of alignment.
             var cuesAligned = true
             for (i, chunk) in chunks.enumerated() {
                 try Task.checkCancellation()
                 jobs[k] = .running(multi ? "轉錄中…（\(i + 1)/\(chunks.count)）" : "轉錄中…")
+                let chunkAudioSeconds = durations.indices.contains(i) ? durations[i] : 0
+                let chunkStarted = Date()
+                let ticker = showProgress ? progressTicker(
+                    id: record.id, done: doneSeconds, chunkSeconds: chunkAudioSeconds,
+                    total: totalSeconds, rate: rate) : nil
+                // The ticker must not outlive its chunk, however the iteration
+                // exits (throw included) — a leaked one would tick forever.
+                defer { ticker?.cancel() }
                 let result = try await OpenAIService.transcribe(
                     fileURL: chunk, config: txConfig,
                     prompt: prompt, language: locale)
@@ -565,7 +597,7 @@ final class AIContentStore: ObservableObject {
                 // trimmed chunk can carry a baked-in source-time offset, detected
                 // here (times already near the chunk's absolute position) and used
                 // as-is. The first chunk is i == 0, so its times pass through.
-                let chunkStart = Double(i) * SpeechAudioExporter.maxChunkSeconds
+                let chunkStart = Double(i) * chunkSeconds
                 let minStart = result.segments.map(\.start).min() ?? 0
                 let offset = (i > 0 && minStart > chunkStart * 0.5) ? 0 : chunkStart
                 let chunkSegments = result.segments.map {
@@ -581,6 +613,15 @@ final class AIContentStore: ObservableObject {
                     result.text, config: chatConfig)) ?? result.text
                 let chunkSentences = Self.displaySentences(chunkText)
                 let chunkCues = Self.alignCues(sentences: chunkSentences, segments: chunkSegments)
+
+                // This chunk is done: blend the measured processing rate in for the
+                // next chunk's estimate, and snap progress to the chunk boundary.
+                ticker?.cancel()
+                if chunkAudioSeconds > 0 {
+                    rate = (rate + Date().timeIntervalSince(chunkStarted) / chunkAudioSeconds) / 2
+                }
+                doneSeconds += chunkAudioSeconds
+                if showProgress { transcriptProgress[record.id] = min(doneSeconds / totalSeconds, 0.99) }
 
                 sentences.append(contentsOf: chunkSentences)
                 if cuesAligned && chunkCues.count == chunkSentences.count {
@@ -633,6 +674,25 @@ final class AIContentStore: ObservableObject {
             // writing .failed would leave a phantom error on the button.
             if !Task.isCancelled { jobs[k] = .failed(error.localizedDescription) }
             return nil
+        }
+    }
+
+    /// Publishes `transcriptProgress` about once a second while one chunk is in
+    /// flight: `done` audio-seconds already finished, plus the current chunk
+    /// scaled by elapsed wall time against its expected processing time
+    /// (`rate` seconds of processing per second of audio). The in-chunk estimate
+    /// caps at 95% so it never claims a chunk that hasn't actually come back, and
+    /// the total caps at 99% — only real completion removes the entry.
+    private func progressTicker(id: String, done: Double, chunkSeconds: Double,
+                                total: Double, rate: Double) -> Task<Void, Never> {
+        Task { [weak self] in
+            let started = Date()
+            while !Task.isCancelled {
+                let expected = max(chunkSeconds * rate, 5)
+                let frac = min(Date().timeIntervalSince(started) / expected, 0.95)
+                self?.transcriptProgress[id] = min((done + frac * chunkSeconds) / total, 0.99)
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
     }
 
