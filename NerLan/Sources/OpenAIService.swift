@@ -26,6 +26,15 @@ enum OpenAIService {
         /// the OpenAI-compatible `/chat/completions` endpoint honors (the native
         /// `think: false` is ignored there). Off for the official OpenAI provider.
         var disableThinking: Bool = false
+
+        /// True when the endpoint is Groq's OpenAI-compatible API, which extends
+        /// `POST /audio/transcriptions` with a `url` form field the server
+        /// fetches itself — so the app can hand over an episode's public audio
+        /// URL instead of uploading the bytes (see `AudioSource.remote`).
+        var isGroq: Bool {
+            guard let host = baseURL.host?.lowercased() else { return false }
+            return host == "groq.com" || host.hasSuffix(".groq.com")
+        }
     }
 
     /// Transcribing a ~30-min episode (and generating a handout from a long
@@ -84,7 +93,17 @@ enum OpenAIService {
         return .none
     }
 
-    /// Transcribe an audio file via `POST /audio/transcriptions` (multipart).
+    /// The audio input for `transcribe`: a local file uploaded in the multipart
+    /// body, or a publicly reachable URL sent as the `url` form field — a Groq
+    /// extension to the OpenAI API (see `Config.isGroq`) where the server
+    /// fetches the audio itself, sparing the client the download and upload.
+    enum AudioSource {
+        case file(URL)
+        case remote(URL)
+    }
+
+    /// Transcribe audio via `POST /audio/transcriptions` (multipart), uploading
+    /// a local file or (Groq only) referencing a remote URL — see `AudioSource`.
     /// Whisper models are asked for `verbose_json` and gpt-4o-transcribe-diarize
     /// for `diarized_json`, so the per-segment timestamps come back (used to
     /// highlight the playing sentence); the remaining models, which support
@@ -103,12 +122,20 @@ enum OpenAIService {
     /// gpt-4o-transcribe-diarize rejects `prompt` outright (and `language` is
     /// undocumented for it), so both are omitted there — it detects each spoken
     /// language natively, which is what makes it good for code-switched audio.
-    static func transcribe(fileURL: URL, config: Config,
+    static func transcribe(source: AudioSource, config: Config,
                            prompt: String? = nil, language: String? = nil) async throws -> TranscriptionResult {
         guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
         let style = timestampStyle(model: config.model)
 
-        let fileData = try Data(contentsOf: fileURL)
+        // Read a local file before building the form so an I/O error throws
+        // cleanly; a remote source contributes only its URL string.
+        let upload: (filename: String, data: Data)?
+        switch source {
+        case .file(let fileURL):
+            upload = (fileURL.lastPathComponent, try Data(contentsOf: fileURL))
+        case .remote:
+            upload = nil
+        }
         let (req, body) = transcriptionRequest(config: config) { form in
             form.field("model", config.model)
             switch style {
@@ -125,8 +152,12 @@ enum OpenAIService {
                 if let language, !language.isEmpty { form.field("language", language) }
                 if let prompt, !prompt.isEmpty { form.field("prompt", prompt) }
             }
-            form.file("file", filename: fileURL.lastPathComponent,
-                      contentType: "application/octet-stream", data: fileData)
+            if let upload {
+                form.file("file", filename: upload.filename,
+                          contentType: "application/octet-stream", data: upload.data)
+            } else if case .remote(let url) = source {
+                form.field("url", url.absoluteString)
+            }
         }
         let (data, response) = try await session.upload(for: req, from: body)
         try check(response, data)

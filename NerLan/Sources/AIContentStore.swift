@@ -532,11 +532,66 @@ final class AIContentStore: ObservableObject {
         jobs[k] = .running("處理音訊中…")
         defer { transcriptProgress.removeValue(forKey: record.id) }
         do {
+            let txConfig = settings.transcriptionConfig
+            let chatConfig = settings.chatConfig
+            // A monolingual source (a podcast) carries its locale: force that
+            // language and drop the Chinese teaching-program prompt, which would
+            // otherwise bias a foreign-language podcast toward Chinese. NER programs
+            // are bilingual (Mandarin host + foreign examples), so they keep the
+            // priming prompt and no forced language, letting whisper switch per passage.
+            let locale = record.audioLocale
+            let prompt = locale == nil ? OpenAIService.transcriptionPrompt(for: record.language) : nil
+
+            // Groq extends /audio/transcriptions with a `url` field the server
+            // fetches itself, so when the custom endpoint is Groq the episode's
+            // public audio URL goes up instead of the audio: no download,
+            // transcode, chunking or upload on the phone, and the whole episode
+            // comes back in one request with timestamps already on the absolute
+            // episode timeline. Groq caps fetched files at 25 MB (free tier —
+            // console.groq.com/docs/speech-to-text), so only URLs whose
+            // Content-Length is known to fit are sent; anything else (and any
+            // Groq-side failure, e.g. a URL it can't reach) takes the
+            // chunked-upload path below.
+            if txConfig.isGroq, let remote = record.audio.flatMap(URL.init(string:)),
+               let bytes = await Self.remoteAudioSize(remote), bytes <= Self.groqURLMaxBytes {
+                do {
+                    jobs[k] = .running("轉錄中…")
+                    // Whole-episode progress estimate from the known duration and
+                    // the rate this server+model measured last run (seeded low on
+                    // first use — Groq runs far faster than the chunked path).
+                    let duration = Double(record.durationSeconds ?? 0)
+                    let rateKey = Self.rateKey(txConfig, urlMode: true)
+                    let ticker = duration > 0 ? progressTicker(
+                        id: record.id, done: 0, chunkSeconds: duration,
+                        total: duration, rate: Self.savedRate(rateKey, fallback: 0.05)) : nil
+                    defer { ticker?.cancel() }
+                    let started = Date()
+                    let result = try await OpenAIService.transcribe(
+                        source: .remote(remote), config: txConfig,
+                        prompt: prompt, language: locale)
+                    jobs[k] = .running("整理句子中…")
+                    let text = (try? await OpenAIService.segmentTranscript(
+                        result.text, config: chatConfig)) ?? result.text
+                    // Remember the measured rate (transcription + sentence cleanup,
+                    // the same span the ticker covers) for the next estimate.
+                    if duration > 0 {
+                        Self.recordRate(rateKey, Date().timeIntervalSince(started) / duration)
+                    }
+                    let sentences = Self.displaySentences(text)
+                    let cues = Self.alignCues(sentences: sentences, segments: result.segments)
+                    return try finishTranscript(record, sentences: sentences, cues: cues,
+                                                cuesAligned: cues.count == sentences.count)
+                } catch {
+                    // A cancelled run must abort, not restart over the upload path.
+                    try Task.checkCancellation()
+                    jobs[k] = .running("處理音訊中…")
+                }
+            }
+
             guard let source = try await audioFileURL(for: record) else {
                 throw OpenAIService.APIError.server("找不到音訊檔")
             }
             jobs[k] = .running("轉錄中…")
-            let txConfig = settings.transcriptionConfig
             // Long episodes are split into ~20-minute chunks (the gpt-4o-transcribe
             // models cap input at 1400 s). gpt-4o-transcribe-diarize gets 5-minute
             // chunks instead: it processes far slower than the others, and a
@@ -553,14 +608,6 @@ final class AIContentStore: ObservableObject {
             let chunkSeconds = diarize ? 300 : SpeechAudioExporter.maxChunkSeconds
             let chunks = await SpeechAudioExporter.exportChunks(source, maxSeconds: chunkSeconds)
             defer { cleanupChunks(chunks, original: source) }
-            // A monolingual source (a podcast) carries its locale: force that
-            // language and drop the Chinese teaching-program prompt, which would
-            // otherwise bias a foreign-language podcast toward Chinese. NER programs
-            // are bilingual (Mandarin host + foreign examples), so they keep the
-            // priming prompt and no forced language, letting whisper switch per passage.
-            let locale = record.audioLocale
-            let prompt = locale == nil ? OpenAIService.transcriptionPrompt(for: record.language) : nil
-            let chatConfig = settings.chatConfig
             let multi = chunks.count > 1
             // Progress estimate: chunk audio lengths give the overall scale; the
             // per-audio-second processing rate is seeded per model and refined
@@ -568,7 +615,8 @@ final class AIContentStore: ObservableObject {
             let durations = await SpeechAudioExporter.durations(of: chunks)
             let totalSeconds = durations.reduce(0, +)
             let showProgress = totalSeconds > 0 && durations.allSatisfy { $0 > 0 }
-            var rate = diarize ? 0.5 : 0.2
+            var rate = Self.savedRate(Self.rateKey(txConfig, urlMode: false),
+                                      fallback: diarize ? 0.5 : 0.2)
             var doneSeconds = 0.0
             var sentences: [String] = []
             var cues: [TranscriptCue] = []
@@ -589,7 +637,7 @@ final class AIContentStore: ObservableObject {
                 // exits (throw included) — a leaked one would tick forever.
                 defer { ticker?.cancel() }
                 let result = try await OpenAIService.transcribe(
-                    fileURL: chunk, config: txConfig,
+                    source: .file(chunk), config: txConfig,
                     prompt: prompt, language: locale)
 
                 // Shift this chunk's timestamps onto the absolute episode timeline.
@@ -641,31 +689,11 @@ final class AIContentStore: ObservableObject {
                 }
             }
 
-            try Task.checkCancellation()
-            let text = sentences.joined(separator: "\n")
-            try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
-            transcriptIds.insert(record.id)
-
-            // Best effort — no usable timestamps (e.g. a non-whisper model) means no
-            // cues file and the transcript simply shows without highlighting.
-            let alignedCues = (cuesAligned && cues.count == sentences.count) ? cues : []
-            if !alignedCues.isEmpty, let data = try? JSONEncoder().encode(alignedCues) {
-                try? data.write(to: cuesURL(record.id))
-            } else {
-                try? FileManager.default.removeItem(at: cuesURL(record.id))
-            }
-            // The finished file is now the source of truth; drop the streamed partial.
-            partialTranscripts.removeValue(forKey: record.id)
-            noteRecord(record)
-            if syncOn {
-                let name = Self.displayName(record)
-                ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: name)
-                // The cue sidecar rides up alongside its transcript so other devices
-                // get the highlighting too.
-                if !alignedCues.isEmpty { ICloudSync.shared.mirrorUp(.cues, id: record.id, displayName: name) }
-            }
-            jobs.removeValue(forKey: k)   // publishes → hasTranscript-driven UI refreshes
-            return text
+            // Remember how fast this server+model actually ran, so the next run's
+            // estimate starts from measurement instead of the seed guess.
+            if doneSeconds > 0 { Self.recordRate(Self.rateKey(txConfig, urlMode: false), rate) }
+            return try finishTranscript(record, sentences: sentences, cues: cues,
+                                        cuesAligned: cuesAligned)
         } catch {
             // Nothing was saved, so drop any streamed partial; the button shows failed.
             partialTranscripts.removeValue(forKey: record.id)
@@ -675,6 +703,88 @@ final class AIContentStore: ObservableObject {
             if !Task.isCancelled { jobs[k] = .failed(error.localizedDescription) }
             return nil
         }
+    }
+
+    /// Persist a finished transcript (plus aligned cues), mirror it up, and
+    /// clear the job — the shared tail of both transcription paths (Groq-by-URL
+    /// and chunked upload). Returns the saved text.
+    private func finishTranscript(_ record: EpisodeRecord, sentences: [String],
+                                  cues: [TranscriptCue], cuesAligned: Bool) throws -> String {
+        try Task.checkCancellation()
+        let text = sentences.joined(separator: "\n")
+        try text.data(using: .utf8)?.write(to: transcriptURL(record.id))
+        transcriptIds.insert(record.id)
+
+        // Best effort — no usable timestamps (e.g. a non-whisper model) means no
+        // cues file and the transcript simply shows without highlighting.
+        let alignedCues = (cuesAligned && cues.count == sentences.count) ? cues : []
+        if !alignedCues.isEmpty, let data = try? JSONEncoder().encode(alignedCues) {
+            try? data.write(to: cuesURL(record.id))
+        } else {
+            try? FileManager.default.removeItem(at: cuesURL(record.id))
+        }
+        // The finished file is now the source of truth; drop the streamed partial.
+        partialTranscripts.removeValue(forKey: record.id)
+        // A pending auto-open normally fires when the first chunk streams in; the
+        // single-request Groq path never streams, so honor it here instead (the
+        // chunked path already consumed the signal, making this a no-op there).
+        if autoOpenTranscriptIds.remove(record.id) != nil { presentTranscript = record }
+        noteRecord(record)
+        if syncOn {
+            let name = Self.displayName(record)
+            ICloudSync.shared.mirrorUp(.transcript, id: record.id, displayName: name)
+            // The cue sidecar rides up alongside its transcript so other devices
+            // get the highlighting too.
+            if !alignedCues.isEmpty { ICloudSync.shared.mirrorUp(.cues, id: record.id, displayName: name) }
+        }
+        // Publishes → hasTranscript-driven UI refreshes.
+        jobs.removeValue(forKey: key(.transcript, record.id))
+        return text
+    }
+
+    /// Groq fetches URL-referenced audio itself and rejects files over 25 MB on
+    /// the free tier (console.groq.com/docs/speech-to-text), so URL mode is only
+    /// used when the audio is known to fit.
+    private static let groqURLMaxBytes: Int64 = 25 * 1024 * 1024
+
+    // MARK: - Learned transcription rates
+
+    /// Progress estimates need a processing rate (seconds of processing per
+    /// second of audio), which varies enormously by server and model — Groq
+    /// fetching by URL runs far above realtime, a LAN whisper server may be
+    /// slower than realtime. Each finished run records its measured rate keyed
+    /// by server+model (URL and chunked-upload modes kept separate), so the
+    /// hardcoded seeds only matter the first time a given setup is used.
+    private static let ratesDefaultsKey = "transcriptionRates"
+
+    private static func rateKey(_ config: OpenAIService.Config, urlMode: Bool) -> String {
+        "\(config.baseURL.host ?? "?")|\(config.model)\(urlMode ? "|url" : "")"
+    }
+
+    private static func savedRate(_ key: String, fallback: Double) -> Double {
+        (UserDefaults.standard.dictionary(forKey: ratesDefaultsKey) as? [String: Double])?[key] ?? fallback
+    }
+
+    private static func recordRate(_ key: String, _ measured: Double) {
+        guard measured > 0, measured.isFinite else { return }
+        var rates = (UserDefaults.standard.dictionary(forKey: ratesDefaultsKey) as? [String: Double]) ?? [:]
+        // Blend with the previous value so one outlier run doesn't dominate.
+        rates[key] = rates[key].map { ($0 + measured) / 2 } ?? measured
+        UserDefaults.standard.set(rates, forKey: ratesDefaultsKey)
+    }
+
+    /// The remote audio's size via a HEAD request, or nil when the server
+    /// doesn't report a Content-Length (in which case the caller conservatively
+    /// takes the chunked-upload path rather than risk a Groq-side rejection).
+    private static func remoteAudioSize(_ url: URL) async -> Int64? {
+        var req = URLRequest(url: url)
+        req.httpMethod = "HEAD"
+        req.timeoutInterval = 30
+        guard let (_, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else { return nil }
+        let length = http.expectedContentLength
+        return length > 0 ? length : nil
     }
 
     /// Publishes `transcriptProgress` about once a second while one chunk is in
