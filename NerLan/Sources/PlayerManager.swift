@@ -94,6 +94,28 @@ final class PlayerManager: ObservableObject {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
         player.defaultRate = playbackRate
         setupRemoteCommands()
+        // Interruptions (Siri, calls, another app taking audio) pause the player
+        // without going through pause(), leaving isPlaying stale at true — and a
+        // stale true makes play()'s guard swallow the lock screen's next play
+        // command entirely. Track them, and resume when the system says to.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] note in
+            let typeRaw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            Task { @MainActor [weak self] in
+                self?.handleInterruption(typeRaw: typeRaw, optionsRaw: optionsRaw)
+            }
+        }
+        // If mediaserverd crashes, every session setting is lost; re-apply the
+        // category so the next play() / load() works instead of staying silent.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { _ in
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main
         ) { [weak self] time in
@@ -231,6 +253,12 @@ final class PlayerManager: ObservableObject {
         if clock.duration > 0, clock.currentTime >= clock.duration - 0.5 {
             seek(to: 0)
         }
+        // While paused in the background the system can deactivate our audio
+        // session (an interruption, or reclaiming an idle session). A background
+        // app playing on an inactive session silently fails — the rate snaps
+        // back to 0 — which broke resuming from the lock screen after a longer
+        // pause. Reactivate first, as load() and loopSegment() already do.
+        try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
         isPlaying = true
         lastTick = Date()
@@ -333,6 +361,27 @@ final class PlayerManager: ObservableObject {
             }
         } else {
             seekPrecisely(to: from)
+        }
+    }
+
+    /// Sync state when the system interrupts playback (the player is already
+    /// paused by iOS at that point), and resume once the interruption ends if
+    /// the system deems resumption appropriate (e.g. after a short call).
+    private func handleInterruption(typeRaw: UInt?, optionsRaw: UInt?) {
+        guard let typeRaw, let type = AVAudioSession.InterruptionType(rawValue: typeRaw) else { return }
+        switch type {
+        case .began:
+            guard isPlaying else { return }
+            isPlaying = false
+            lastTick = nil
+            savePosition()
+            ListeningStatsStore.shared.flush()
+            updateNowPlayingElapsed()
+        case .ended:
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw ?? 0)
+            if options.contains(.shouldResume) { play() }
+        @unknown default:
+            break
         }
     }
 
