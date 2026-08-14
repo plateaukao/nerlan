@@ -7,19 +7,39 @@ import WidgetKit
 /// The widget extension is a separate process with no access to Documents, the
 /// player, or the network — so the app flattens its state into one small JSON
 /// file (`WidgetSnapshot`) plus a folder of cover thumbnails, and pokes
-/// WidgetKit. Writes are change-gated on a *signature* that deliberately omits
-/// the playback position: while audio is playing the widget extrapolates the
-/// position from `positionAt` and `rate` in its own timeline, so a moving
-/// progress bar costs zero reloads. Only real changes — a different episode,
-/// play/pause, a new favorite or download, another 5 minutes of listening —
-/// spend from WidgetKit's reload budget.
+/// WidgetKit. Writing the file is free; the poke is not. WidgetKit budgets
+/// roughly 40–70 reloads per widget per day, and exceeding it doesn't just
+/// stale the widget — chronod flags the whole extension and starts *denying*
+/// timeline fetches, so a widget whose archived render the system dropped
+/// (reboot, respring, memory purge) redraws as a bare gray placeholder and
+/// stays that way for hours. That was this app at ~250 reload calls a day.
+///
+/// So the two are decided separately. The snapshot file is written whenever
+/// anything moved, keeping it accurate for the widgets' own scheduled refetches
+/// (every 30 minutes while playing, hourly otherwise). A reload is spent only
+/// on a *visible transition* — a different episode, play/pause, the queue or
+/// library changing — never on the playback position (the widget extrapolates
+/// it from `positionAt` and `rate` locally) and never on the 最近播放 resume
+/// percentages (the scheduled refetches pick those up). Listening stats run on
+/// their own coarser signature and reload only the stats widget kind.
 @MainActor
 final class WidgetBridge {
     static let shared = WidgetBridge()
 
     private var cancellables = Set<AnyCancellable>()
-    /// Signature of the last snapshot written, to suppress no-op reloads.
-    private var lastSignature: String?
+    /// Reload-worthy signature as of the last reload, so budget is spent only
+    /// on transitions the user can see at a glance.
+    private var lastReloadSignature: String?
+    /// Ditto for the stats widget, which changes on its own coarser clock.
+    private var lastStatsSignature: String?
+    /// The snapshot most recently written, to detect seeks — position jumps the
+    /// widget's local extrapolation can't follow.
+    private var lastWritten: WidgetSnapshot?
+    /// Seek-driven reloads are rate-limited: a learner replaying sentences taps
+    /// ±15s in bursts, and a slightly-off progress bar is only cosmetic.
+    private var lastSeekReload = Date.distantPast
+    /// Last hourly foreground repaint — see `repairIfDue`.
+    private var lastRepair = Date.distantPast
     private var exportTask: Task<Void, Never>?
     /// Cover set the export worker should drain next; replaced, not appended to,
     /// since each snapshot carries the complete set.
@@ -56,8 +76,10 @@ final class WidgetBridge {
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)
 
-        // Leaving the app is the one moment worth writing unconditionally: it
-        // pins an accurate playback position for the widget to extrapolate from.
+        // Leaving the app pins an accurate playback position in the file for
+        // the widget to extrapolate from. A write, not a reload: resign-active
+        // fires for every lock, app switch, and Control Center pull, and the
+        // unconditional reloads here were a large slice of the budget overrun.
         for name in [UIApplication.didEnterBackgroundNotification,
                      UIApplication.willResignActiveNotification] {
             NotificationCenter.default.publisher(for: name)
@@ -65,21 +87,67 @@ final class WidgetBridge {
                 .store(in: &cancellables)
         }
 
+        // Coming back to the foreground, repaint everything once an hour even
+        // if nothing changed: foreground reload requests are honored
+        // immediately without touching the budget, so this un-sticks a widget
+        // the system left as a gray placeholder while we were over budget.
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.repairIfDue() }
+            .store(in: &cancellables)
+
+        lastRepair = Date()  // the launch refresh below already reloads
         refresh(force: true)
         Task { await refreshLatestEpisodes() }
     }
 
-    /// Rebuild and publish the snapshot. `force` skips the change check (used on
-    /// launch and when backgrounding).
+    /// Rebuild the snapshot, write it if anything moved, and reload only what a
+    /// visible transition justifies (see the class comment for why). `force`
+    /// writes the file even when nothing changed — used on launch and when
+    /// backgrounding — but never forces a reload by itself.
     func refresh(force: Bool = false) {
         var covers: [String: String] = [:]
         let snapshot = buildSnapshot(covers: &covers)
-        let signature = Self.signature(of: snapshot)
-        guard force || signature != lastSignature else { return }
-        lastSignature = signature
+
+        let reloadSignature = Self.reloadSignature(of: snapshot)
+        let statsSignature = Self.statsSignature(of: snapshot)
+        let seeked = seekedSinceLastWrite(snapshot)
+        let reloadAll = reloadSignature != lastReloadSignature || seeked
+        let statsChanged = statsSignature != lastStatsSignature
+
+        guard force || reloadAll || statsChanged else { return }
         guard WidgetShare.writeSnapshot(snapshot) else { return }
-        WidgetCenter.shared.reloadAllTimelines()
+        lastWritten = snapshot
+
+        if reloadAll {
+            lastReloadSignature = reloadSignature
+            lastStatsSignature = statsSignature
+            if seeked { lastSeekReload = Date() }
+            WidgetCenter.shared.reloadAllTimelines()
+        } else if statsChanged {
+            lastStatsSignature = statsSignature
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.stats)
+        }
         exportCovers(covers)
+    }
+
+    /// Hourly full repaint when the app comes to the foreground — see start().
+    private func repairIfDue() {
+        guard Date().timeIntervalSince(lastRepair) > 3600 else { return }
+        lastRepair = Date()
+        lastReloadSignature = nil  // makes the refresh below reload everything
+        refresh(force: true)
+    }
+
+    /// Whether playback jumped (a seek) relative to what the last written
+    /// snapshot lets the widget extrapolate. Worth a reload — the progress bar
+    /// is otherwise wrong until the next scheduled refetch — but only past a
+    /// threshold a glance would notice, and rate-limited via `lastSeekReload`.
+    private func seekedSinceLastWrite(_ snapshot: WidgetSnapshot) -> Bool {
+        guard let last = lastWritten,
+              let episode = snapshot.nowPlaying, last.nowPlaying?.id == episode.id,
+              abs(last.position(at: snapshot.positionAt) - snapshot.position) > 30
+        else { return false }
+        return Date().timeIntervalSince(lastSeekReload) > 300
     }
 
     // MARK: - Snapshot
@@ -240,24 +308,30 @@ final class WidgetBridge {
                              isPodcast: record.audioLocale != nil)
     }
 
-    /// Everything worth spending a widget reload on. Deliberately excludes the
-    /// playback position (the widget extrapolates it) and rounds listening
-    /// minutes to 5, so a listening session doesn't reload once a minute.
-    private static func signature(of snapshot: WidgetSnapshot) -> String {
-        var parts: [String] = [
+    /// The transitions worth an immediate reload of every widget: a different
+    /// episode, play/pause, a rate change (it steers the widget's local
+    /// extrapolation), or the queue / library / recents changing what they
+    /// list. Positions, resume percentages, and stats are deliberately absent —
+    /// they reach the widgets through the file alone.
+    private static func reloadSignature(of snapshot: WidgetSnapshot) -> String {
+        [
             snapshot.nowPlaying?.id ?? "-",
             snapshot.isPlaying ? "1" : "0",
+            String(snapshot.rate),
             snapshot.upNext.map(\.id).joined(separator: ","),
             snapshot.shows.map { "\($0.id):\($0.latest.map(\.id).joined(separator: "+"))" }
                 .joined(separator: ","),
-            // Which show was last played, and how far into it — not the exact
-            // offset, so a resume bar nudges forward at most every 5%.
-            snapshot.recentShows.map {
-                "\($0.id):\($0.lastEpisodeId ?? "-"):\(Int(($0.resumeProgress ?? 0) * 20))"
-            }.joined(separator: ","),
-        ]
-        parts.append("\(snapshot.stats.minutesToday / 5)|\(snapshot.stats.streakDays)|\(snapshot.stats.completedCount)")
-        return parts.joined(separator: "#")
+            snapshot.recentShows.map { "\($0.id):\($0.lastEpisodeId ?? "-")" }
+                .joined(separator: ","),
+        ].joined(separator: "#")
+    }
+
+    /// The stats widget's own clock: whole 15-minute steps of listening plus
+    /// the streak and completed counters — at most a few reloads per listening
+    /// hour, spent on that one widget kind only.
+    private static func statsSignature(of snapshot: WidgetSnapshot) -> String {
+        "\(snapshot.stats.minutesToday / 15)|\(snapshot.stats.minutesThisWeek / 15)"
+            + "|\(snapshot.stats.streakDays)|\(snapshot.stats.completedCount)"
     }
 
     // MARK: - Cover thumbnails
