@@ -12,7 +12,7 @@ enum PodcastAPI {
         case server(String)
         var errorDescription: String? {
             switch self {
-            case .notAPodcast: return "找不到對應的 Podcast"
+            case .notAPodcast: return String(localized: "找不到對應的 Podcast")
             case .server(let m): return m
             }
         }
@@ -40,7 +40,7 @@ enum PodcastAPI {
     static func fetchFeedData(_ url: URL) async throws -> Data {
         let (data, response) = try await get(url)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.server("下載 RSS 失敗（HTTP \(http.statusCode)）")
+            throw APIError.server(String(localized: "下載 RSS 失敗（HTTP \(http.statusCode)）"))
         }
         return data
     }

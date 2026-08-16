@@ -11,6 +11,9 @@ struct UsageStatsView: View {
     enum ChartRange: String, CaseIterable, Identifiable {
         case day = "日", week = "週", month = "月"
         var id: String { rawValue }
+        /// Raw values stay Chinese (they are the `Identifiable` id); this is
+        /// what the picker draws, routed through the String Catalog.
+        var label: LocalizedStringKey { LocalizedStringKey(rawValue) }
     }
 
     var body: some View {
@@ -35,7 +38,7 @@ struct UsageStatsView: View {
             LabeledContent("總聆聽時間", value: Self.durationText(stats.totalSeconds))
             LabeledContent("完成單集", value: "\(stats.completedCount)")
             LabeledContent("連續聆聽天數",
-                           value: stats.currentStreak > 0 ? "🔥 \(stats.currentStreak) 天" : "—")
+                           value: stats.currentStreak > 0 ? String(localized: "🔥 \(stats.currentStreak) 天") : "—")
             LabeledContent("今日", value: Self.durationText(stats.secondsToday))
             LabeledContent("本週", value: Self.durationText(stats.secondsThisWeek))
             LabeledContent("本月", value: Self.durationText(stats.secondsThisMonth))
@@ -45,7 +48,7 @@ struct UsageStatsView: View {
     private var chartSection: some View {
         Section {
             Picker("範圍", selection: $range) {
-                ForEach(ChartRange.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(ChartRange.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             chart
@@ -105,8 +108,8 @@ struct UsageStatsView: View {
         let total = Int(seconds)
         let h = total / 3600
         let m = (total % 3600) / 60
-        if h > 0 { return "\(h) 小時 \(m) 分" }
-        if m > 0 { return "\(m) 分" }
-        return total > 0 ? "\(total) 秒" : "0 分"
+        if h > 0 { return String(localized: "\(h) 小時 \(m) 分") }
+        if m > 0 { return String(localized: "\(m) 分") }
+        return total > 0 ? String(localized: "\(total) 秒") : String(localized: "0 分")
     }
 }

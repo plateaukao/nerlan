@@ -5,6 +5,10 @@ enum RecordGrouping: String, CaseIterable, Identifiable {
     case program = "節目"
     case language = "語言"
     var id: String { rawValue }
+    /// Display text. The raw values double as the persisted `@AppStorage`
+    /// representation, so they stay Chinese; this is what the UI draws, and as a
+    /// `LocalizedStringKey` it goes through the String Catalog.
+    var label: LocalizedStringKey { LocalizedStringKey(rawValue) }
     func key(for record: EpisodeRecord) -> String {
         self == .program ? record.programName : record.language
     }
@@ -29,7 +33,7 @@ struct GroupingToggle: View {
                             .padding(3)
                             .matchedGeometryEffect(id: "indicator", in: ns)
                     }
-                    Text(group.rawValue)
+                    Text(group.label)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(isSelected ? Color.white : Color.secondary)
                 }
@@ -59,7 +63,7 @@ struct CapsuleGlass: ViewModifier {
 func groupRecords(_ records: [EpisodeRecord], by grouping: RecordGrouping)
     -> [(key: String, records: [EpisodeRecord])] {
     Dictionary(grouping: records) { grouping.key(for: $0) }
-        .map { (key: $0.key.isEmpty ? "其他" : $0.key,
+        .map { (key: $0.key.isEmpty ? String(localized: "其他") : $0.key,
                 records: $0.value.sorted(by: episodeOrder)) }
         .sorted { $0.key < $1.key }
 }
@@ -81,6 +85,8 @@ enum DownloadFilter: String, CaseIterable, Identifiable {
     case downloaded = "已下載"
     case cached = "快取"
     var id: String { rawValue }
+    /// See `RecordGrouping.label` — raw values stay Chinese for persistence.
+    var label: LocalizedStringKey { LocalizedStringKey(rawValue) }
 }
 
 /// Compact filter menu beside the grouping toggle (and in the Mac sidebar
@@ -92,7 +98,7 @@ struct DownloadFilterMenu: View {
         Menu {
             Picker("顯示", selection: $selection) {
                 ForEach(DownloadFilter.allCases) { filter in
-                    Text(filter.rawValue).tag(filter)
+                    Text(filter.label).tag(filter)
                 }
             }
         } label: {

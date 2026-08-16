@@ -1,0 +1,30 @@
+{
+  "sourceLanguage" : "zh-Hant",
+  "strings" : {
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "Shown when shadowing practice first asks to record the learner reading aloud.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NerLan records you reading aloud so you can compare your delivery with the original audio."
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Shown before Bonjour browsing for a self-hosted whisperASR transcription server.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NerLan looks for your whisperASR transcription server on the local network so it can fill in the server address for you."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

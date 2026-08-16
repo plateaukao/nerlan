@@ -249,7 +249,7 @@ struct SettingsView: View {
     /// shows the outcome inline: a spinner while checking, a green check on
     /// success, or a red mark plus the server's error message on failure.
     @ViewBuilder
-    private func verifyRow(title: String, state: ProbeState, action: @escaping () -> Void) -> some View {
+    private func verifyRow(title: LocalizedStringKey, state: ProbeState, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 Text(title)
@@ -272,7 +272,9 @@ struct SettingsView: View {
     /// an empty key falls back to the OpenAI-mode key, so say so; otherwise it's
     /// optional (keyless local servers).
     private func customKeyPlaceholder(for url: String) -> String {
-        settings.customURLIsOfficial(url) ? "與 OpenAI 模式相同（可留空）" : "API 金鑰（可留空）"
+        settings.customURLIsOfficial(url)
+            ? String(localized: "與 OpenAI 模式相同（可留空）")
+            : String(localized: "API 金鑰（可留空）")
     }
 
     /// Run a readiness probe: flip the row to `.checking`, await the live request,
@@ -332,6 +334,6 @@ struct SettingsView: View {
     private var cacheSizeText: String {
         guard cacheBytes > 0 else { return "" }
         let size = ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
-        return "目前已快取 \(size)。"
+        return String(localized: "目前已快取 \(size)。")
     }
 }

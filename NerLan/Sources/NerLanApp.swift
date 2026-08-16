@@ -103,8 +103,8 @@ final class MacToolbar: NSObject, NSToolbarDelegate {
         let button = UIBarButtonItem(image: UIImage(systemName: "sidebar.leading"),
                                      style: .plain, target: self, action: #selector(toggle))
         let item = NSToolbarItem(itemIdentifier: itemIdentifier, barButtonItem: button)
-        item.label = "側欄"
-        item.toolTip = "顯示或隱藏側欄"
+        item.label = String(localized: "側欄")
+        item.toolTip = String(localized: "顯示或隱藏側欄")
         return item
     }
 

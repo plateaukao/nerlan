@@ -22,7 +22,9 @@ let tabListTopMargin: CGFloat = 0
 #endif
 
 struct ScrollAwayTitle: View {
-    let text: String
+    /// `LocalizedStringKey`, not `String` — a plain String would bypass the
+    /// String Catalog and render the zh-Hant key verbatim in every locale.
+    let text: LocalizedStringKey
 
     var body: some View {
         Text(text)
@@ -37,7 +39,9 @@ struct ScrollAwayTitle: View {
 /// Static large title pinned at the top of an empty state (nothing to scroll),
 /// so empty tabs still show their title flush at the top like the populated list.
 struct TopTitle: View {
-    let text: String
+    /// `LocalizedStringKey`, not `String` — a plain String would bypass the
+    /// String Catalog and render the zh-Hant key verbatim in every locale.
+    let text: LocalizedStringKey
 
     var body: some View {
         Text(text)

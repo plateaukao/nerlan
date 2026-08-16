@@ -42,7 +42,7 @@ final class DriveAuth: NSObject {
     /// The auth sheet couldn't be presented (e.g. no key window yet), so its
     /// completion handler will never fire.
     struct PresentationFailed: LocalizedError {
-        var errorDescription: String? { "無法開啟 Google 登入視窗，請再試一次。" }
+        var errorDescription: String? { String(localized: "無法開啟 Google 登入視窗，請再試一次。") }
     }
 
     private var cachedToken: String?

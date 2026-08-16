@@ -3,6 +3,12 @@ options:
   bundleIdPrefix: com.danielkao
   deploymentTarget:
     iOS: "17.0"
+  # UI strings are authored in Traditional Chinese and used verbatim as the
+  # String Catalog keys, so zh-Hant is the development language and English is a
+  # translation of it. Keeping the keys in Chinese means the SwiftUI call sites
+  # (`Text("節目")`) need no edits to become localizable.
+  developmentLanguage: zh-Hant
+  knownRegions: [zh-Hant, en, Base]
 targets:
   NerLan:
     type: application
@@ -12,6 +18,12 @@ targets:
       # Model + intent code shared verbatim with the widget extension.
       - NerLan/Shared
       - path: NerLan/Resources/Assets.xcassets
+        buildPhase: resources
+      # UI strings (zh-Hant keys -> en translations) and the localized
+      # Info.plist purpose strings / display name.
+      - path: NerLan/Resources/Localizable.xcstrings
+        buildPhase: resources
+      - path: NerLan/Resources/InfoPlist.xcstrings
         buildPhase: resources
     dependencies:
       # XcodeGen embeds app-extension dependencies into the app's PlugIns folder.
@@ -126,6 +138,10 @@ targets:
     sources:
       - NerLan/Shared
       - NerLanWidgets
+      # The extension is a separate bundle, so it needs its own copy of the
+      # strings — including the ones from the shared intent code.
+      - path: NerLanWidgets/Localizable.xcstrings
+        buildPhase: resources
     entitlements:
       path: NerLanWidgets/NerLanWidgets.entitlements
       properties:

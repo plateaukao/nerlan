@@ -206,24 +206,24 @@ enum WidgetFormat {
     static func remaining(_ snapshot: WidgetSnapshot, at date: Date) -> String? {
         guard let duration = snapshot.nowPlaying?.duration, duration > 0 else { return nil }
         let left = max(0, duration - snapshot.position(at: date))
-        if left < 60 { return "剩 \(Int(left)) 秒" }
-        return "剩 \(Int(left / 60)) 分鐘"
+        if left < 60 { return String(localized: "剩 \(Int(left)) 秒") }
+        return String(localized: "剩 \(Int(left / 60)) 分鐘")
     }
 
     /// "38 分鐘" — an episode's total length, for rows that aren't playing.
     static func length(_ seconds: Double?) -> String? {
         guard let seconds, seconds > 0 else { return nil }
-        if seconds < 60 { return "\(Int(seconds)) 秒" }
-        return "\(Int(seconds / 60)) 分鐘"
+        if seconds < 60 { return String(localized: "\(Int(seconds)) 秒") }
+        return String(localized: "\(Int(seconds / 60)) 分鐘")
     }
 
     /// "1 小時 12 分鐘" / "12 分鐘" — listening totals.
     static func duration(minutes: Int) -> String {
         if minutes >= 60 {
             let h = minutes / 60, m = minutes % 60
-            return m == 0 ? "\(h) 小時" : "\(h) 小時 \(m) 分"
+            return m == 0 ? String(localized: "\(h) 小時") : "\(h) 小時 \(m) 分"
         }
-        return "\(minutes) 分鐘"
+        return String(localized: "\(minutes) 分鐘")
     }
 }
 
@@ -232,7 +232,9 @@ enum WidgetFormat {
 /// Shared "nothing to show yet" panel, so every widget fails the same way.
 struct WidgetEmptyState: View {
     let systemImage: String
-    let message: String
+    /// `LocalizedStringKey`, not `String` — a plain String bypasses the String
+    /// Catalog and would render the zh-Hant key verbatim in every locale.
+    let message: LocalizedStringKey
     var compact = false
 
     var body: some View {

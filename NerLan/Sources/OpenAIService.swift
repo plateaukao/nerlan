@@ -54,9 +54,9 @@ enum OpenAIService {
 
         var errorDescription: String? {
             switch self {
-            case .missingKey: return "尚未設定 OpenAI API 金鑰"
+            case .missingKey: return String(localized: "尚未設定 OpenAI API 金鑰")
             case .server(let m): return m
-            case .decode: return "無法解析 OpenAI 回應"
+            case .decode: return String(localized: "無法解析 OpenAI 回應")
             }
         }
     }
@@ -543,7 +543,7 @@ enum OpenAIService {
             .trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty {
             detail = "：" + (body.count > 300 ? String(body.prefix(300)) + "…" : body)
         }
-        throw APIError.server("\(host) 請求失敗（HTTP \(http.statusCode)）\(detail)")
+        throw APIError.server(String(localized: "\(host) 請求失敗（HTTP \(http.statusCode)）\(detail)"))
     }
 
     /// Models sometimes wrap HTML in ```html fences despite instructions.

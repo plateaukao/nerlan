@@ -292,7 +292,7 @@ private struct MacTabBar: View {
     @Binding var selection: Int
     @Namespace private var ns
 
-    private static let titles = ["節目", "收藏", "下載", "AI"]
+    private static let titles: [LocalizedStringKey] = ["節目", "收藏", "下載", "AI"]
 
     var body: some View {
         HStack(spacing: 0) {

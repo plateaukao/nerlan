@@ -1,0 +1,524 @@
+{
+  "sourceLanguage": "zh-Hant",
+  "strings": {
+    "%@": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "%lld": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "%lld 分鐘": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min"
+          }
+        }
+      }
+    },
+    "%lld 小時": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldh"
+          }
+        }
+      }
+    },
+    "%lld 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%llds"
+          }
+        }
+      }
+    },
+    "NerLan": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "下一集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next Episode"
+          }
+        }
+      }
+    },
+    "今天聽了多久、連續學習幾天。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How long you listened today, and your streak."
+          }
+        }
+      }
+    },
+    "今日 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today %@"
+          }
+        }
+      }
+    },
+    "今日學習": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today"
+          }
+        }
+      }
+    },
+    "先收藏一個節目\n再選它顯示最新單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorite a show first\nthen pick it here"
+          }
+        }
+      }
+    },
+    "分鐘": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes"
+          }
+        }
+      }
+    },
+    "剩 %lld 分鐘": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min left"
+          }
+        }
+      }
+    },
+    "剩 %lld 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%llds left"
+          }
+        }
+      }
+    },
+    "單集編號": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episode ID"
+          }
+        }
+      }
+    },
+    "在目前的單集內前後跳 15 秒。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jump 15 seconds forward or back within the current episode."
+          }
+        }
+      }
+    },
+    "學習紀錄": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening Stats"
+          }
+        }
+      }
+    },
+    "尚未取得最新單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No latest episode yet"
+          }
+        }
+      }
+    },
+    "從上次停下的地方繼續播放整個節目。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume the whole show from where you left off."
+          }
+        }
+      }
+    },
+    "從上次停下的地方繼續，整個節目接著播。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume where you left off and keep the show rolling."
+          }
+        }
+      }
+    },
+    "快轉或倒轉": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip Forward or Back"
+          }
+        }
+      }
+    },
+    "我的節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My Shows"
+          }
+        }
+      }
+    },
+    "挑選要顯示的節目；不選的話依收聽時間排序。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick which shows to display; otherwise they’re ordered by listening time."
+          }
+        }
+      }
+    },
+    "接下來": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up Next"
+          }
+        }
+      }
+    },
+    "播放單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Episode"
+          }
+        }
+      }
+    },
+    "播放或暫停": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play or Pause"
+          }
+        }
+      }
+    },
+    "播放或暫停目前的單集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play or pause the current episode."
+          }
+        }
+      }
+    },
+    "播放指定的單集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play a specific episode."
+          }
+        }
+      }
+    },
+    "播放過的節目\n會出現在這裡": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows you play\nappear here"
+          }
+        }
+      }
+    },
+    "收藏的節目與訂閱的 Podcast，一按就打開。可自選要顯示哪幾個。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorited shows and podcast subscriptions, one tap away. Choose which ones to show."
+          }
+        }
+      }
+    },
+    "是否為 Podcast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Is Podcast"
+          }
+        }
+      }
+    },
+    "最新單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest Episode"
+          }
+        }
+      }
+    },
+    "最近播放": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recently Played"
+          }
+        }
+      }
+    },
+    "本週 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Week %lld"
+          }
+        }
+      }
+    },
+    "秒數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seconds"
+          }
+        }
+      }
+    },
+    "節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows"
+          }
+        }
+      }
+    },
+    "節目編號": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show ID"
+          }
+        }
+      }
+    },
+    "繼續播放節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Show"
+          }
+        }
+      }
+    },
+    "繼續收聽": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up Next"
+          }
+        }
+      }
+    },
+    "跳到播放佇列的下一集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip to the next episode in the queue."
+          }
+        }
+      }
+    },
+    "連續 %lld 天": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld-day streak"
+          }
+        }
+      }
+    },
+    "連續 %lld 天 · 本週 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld-day streak · %@ this week"
+          }
+        }
+      }
+    },
+    "選一個收藏的節目或訂閱的 Podcast。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a favorited show or a podcast you subscribe to."
+          }
+        }
+      }
+    },
+    "選一個節目，顯示並播放它最新的單集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a show to see and play its newest episode."
+          }
+        }
+      }
+    },
+    "選擇節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Show"
+          }
+        }
+      }
+    },
+    "還沒有可以播放的單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to play yet"
+          }
+        }
+      }
+    },
+    "還沒有可以播放的單集\n先下載或收藏一集吧": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to play yet\nDownload or favorite an episode"
+          }
+        }
+      }
+    },
+    "顯示正在播放的單集，並直接播放接下來的內容。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows what’s playing and starts whatever comes next."
+          }
+        }
+      }
+    },
+    "點選節目旁的愛心\n就會出現在這裡": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap a show’s heart\nand it appears here"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

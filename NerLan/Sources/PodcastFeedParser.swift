@@ -11,8 +11,8 @@ enum PodcastFeedParser {
         case noEpisodes
         var errorDescription: String? {
             switch self {
-            case .malformed: return "無法解析這個 RSS"
-            case .noEpisodes: return "這個 RSS 沒有可播放的單集"
+            case .malformed: return String(localized: "無法解析這個 RSS")
+            case .noEpisodes: return String(localized: "這個 RSS 沒有可播放的單集")
             }
         }
     }

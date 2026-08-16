@@ -530,7 +530,7 @@ struct TranscriptView: View {
             return
         }
         guard settings.hasAPIKey else {
-            translateErrorText = "尚未設定 OpenAI API 金鑰，無法翻譯。"
+            translateErrorText = String(localized: "尚未設定 OpenAI API 金鑰，無法翻譯。")
             showTranslateError = true
             return
         }

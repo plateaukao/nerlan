@@ -56,16 +56,16 @@ final class DriveSync: ObservableObject {
 
     /// Interactive browser sign-in; on success enables the toggle and kicks a sync.
     func signIn() async {
-        status = "登入中…"
+        status = String(localized: "登入中…")
         do {
             try await auth.signIn()
             accountEmail = auth.email
             // Flipping the toggle on triggers the first sync via its didSet.
             SettingsStore.shared.syncToDrive = true
         } catch is DriveAuth.ReauthRequired {
-            status = "登入已取消"
+            status = String(localized: "登入已取消")
         } catch {
-            status = "登入失敗：\(error.localizedDescription)"
+            status = String(localized: "登入失敗：\(error.localizedDescription)")
         }
     }
 
@@ -112,20 +112,20 @@ final class DriveSync: ObservableObject {
     private func runSync() async {
         guard !isSyncing else { return }
         isSyncing = true
-        status = "同步中…"
+        status = String(localized: "同步中…")
         defer { isSyncing = false }
         do {
             let token = try await auth.accessToken()
             let result = try await performSync(token: token)
             status = result.skipped.isEmpty
-                ? "已同步（↑\(result.pushed) ↓\(result.pulled)）"
-                : "已同步（↑\(result.pushed) ↓\(result.pulled)），\(result.skipped.count) 個檔案無法解析，已略過"
+                ? String(localized: "已同步（↑\(result.pushed) ↓\(result.pulled)）")
+                : String(localized: "已同步（↑\(result.pushed) ↓\(result.pulled)），\(result.skipped.count) 個檔案無法解析，已略過")
             if result.pulled > 0 { reloadStores() }
         } catch is DriveAuth.ReauthRequired {
             accountEmail = auth.email   // nil after the failed refresh signed us out
-            status = "需要重新登入 Google"
+            status = String(localized: "需要重新登入 Google")
         } catch {
-            status = "同步失敗：\(error.localizedDescription)"
+            status = String(localized: "同步失敗：\(error.localizedDescription)")
         }
     }
 

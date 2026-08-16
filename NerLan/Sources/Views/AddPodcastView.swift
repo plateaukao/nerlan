@@ -71,7 +71,7 @@ struct AddPodcastView: View {
         var s = trimmed
         if !s.lowercased().hasPrefix("http") { s = "https://" + s }
         guard let url = URL(string: s) else {
-            errorMessage = "網址格式不正確"
+            errorMessage = String(localized: "網址格式不正確")
             return
         }
         isLoading = true

@@ -41,7 +41,7 @@ struct Attachment: Codable, Identifiable, Hashable {
     let attachmentKey: String
 
     var id: String { attachmentKey }
-    var displayName: String { originalName ?? "附件" }
+    var displayName: String { originalName ?? String(localized: "附件") }
 
     /// File extension to store/open the attachment with (defaults to pdf).
     var fileExtension: String {
@@ -106,7 +106,7 @@ struct Program: Codable, Identifiable, Hashable {
     let languageTags: LanguageTags?
 
     var id: String { programId }
-    var language: String { languageTags?.contentLanguage?.first?.name ?? "其他" }
+    var language: String { languageTags?.contentLanguage?.first?.name ?? String(localized: "其他") }
     var level: String? { languageTags?.contentLevel?.first?.name }
     var coverURL: URL? { ChannelPlusAPI.imageURL(image?.imageRef) }
 
@@ -134,7 +134,7 @@ struct Episode: Codable, Identifiable, Hashable {
     let attachments: [Attachment]?
 
     var id: String { episodeId }
-    var displayTitle: String { title ?? "（無標題）" }
+    var displayTitle: String { title ?? String(localized: "（無標題）") }
     var audioURL: URL? { ChannelPlusAPI.audioURL(voice?.voiceRef) }
 
     var releaseDateValue: Date? {

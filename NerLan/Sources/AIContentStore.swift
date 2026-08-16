@@ -529,7 +529,7 @@ final class AIContentStore: ObservableObject {
         if let existing = transcriptText(record.id) { return existing }
         let k = key(.transcript, record.id)
         let settings = SettingsStore.shared
-        jobs[k] = .running("處理音訊中…")
+        jobs[k] = .running(String(localized: "處理音訊中…"))
         defer { transcriptProgress.removeValue(forKey: record.id) }
         do {
             let txConfig = settings.transcriptionConfig
@@ -555,7 +555,7 @@ final class AIContentStore: ObservableObject {
             if txConfig.isGroq, let remote = record.audio.flatMap(URL.init(string:)),
                let bytes = await Self.remoteAudioSize(remote), bytes <= Self.groqURLMaxBytes {
                 do {
-                    jobs[k] = .running("轉錄中…")
+                    jobs[k] = .running(String(localized: "轉錄中…"))
                     // Whole-episode progress estimate from the known duration and
                     // the rate this server+model measured last run (seeded low on
                     // first use — Groq runs far faster than the chunked path).
@@ -569,7 +569,7 @@ final class AIContentStore: ObservableObject {
                     let result = try await OpenAIService.transcribe(
                         source: .remote(remote), config: txConfig,
                         prompt: prompt, language: locale)
-                    jobs[k] = .running("整理句子中…")
+                    jobs[k] = .running(String(localized: "整理句子中…"))
                     let text = (try? await OpenAIService.segmentTranscript(
                         result.text, config: chatConfig)) ?? result.text
                     // Remember the measured rate (transcription + sentence cleanup,
@@ -584,14 +584,14 @@ final class AIContentStore: ObservableObject {
                 } catch {
                     // A cancelled run must abort, not restart over the upload path.
                     try Task.checkCancellation()
-                    jobs[k] = .running("處理音訊中…")
+                    jobs[k] = .running(String(localized: "處理音訊中…"))
                 }
             }
 
             guard let source = try await audioFileURL(for: record) else {
-                throw OpenAIService.APIError.server("找不到音訊檔")
+                throw OpenAIService.APIError.server(String(localized: "找不到音訊檔"))
             }
-            jobs[k] = .running("轉錄中…")
+            jobs[k] = .running(String(localized: "轉錄中…"))
             // Long episodes are split into ~20-minute chunks (the gpt-4o-transcribe
             // models cap input at 1400 s). gpt-4o-transcribe-diarize gets 5-minute
             // chunks instead: it processes far slower than the others, and a
@@ -627,7 +627,7 @@ final class AIContentStore: ObservableObject {
             var cuesAligned = true
             for (i, chunk) in chunks.enumerated() {
                 try Task.checkCancellation()
-                jobs[k] = .running(multi ? "轉錄中…（\(i + 1)/\(chunks.count)）" : "轉錄中…")
+                jobs[k] = .running(multi ? String(localized: "轉錄中…（\(i + 1)/\(chunks.count)）") : String(localized: "轉錄中…"))
                 let chunkAudioSeconds = durations.indices.contains(i) ? durations[i] : 0
                 let chunkStarted = Date()
                 let ticker = showProgress ? progressTicker(
@@ -656,7 +656,7 @@ final class AIContentStore: ObservableObject {
                 // model (adds sentence-ending punctuation only, never alters content);
                 // on failure keep the chunk's raw text so the paid transcription isn't
                 // lost. Then align its sentences to its own timestamps (B3b).
-                jobs[k] = .running(multi ? "整理句子中…（\(i + 1)/\(chunks.count)）" : "整理句子中…")
+                jobs[k] = .running(multi ? String(localized: "整理句子中…（\(i + 1)/\(chunks.count)）") : String(localized: "整理句子中…"))
                 let chunkText = (try? await OpenAIService.segmentTranscript(
                     result.text, config: chatConfig)) ?? result.text
                 let chunkSentences = Self.displaySentences(chunkText)
@@ -836,14 +836,14 @@ final class AIContentStore: ObservableObject {
     private func runHandout(_ record: EpisodeRecord) async {
         let k = key(.handout, record.id)
         let settings = SettingsStore.shared
-        jobs[k] = .running("準備逐字稿…")
+        jobs[k] = .running(String(localized: "準備逐字稿…"))
         do {
             // Join any transcription already in flight rather than starting a second.
             guard let transcript = await transcriptTask(record).value else {
                 if case .failed(let m)? = jobs[key(.transcript, record.id)] {
                     throw OpenAIService.APIError.server(m)
                 }
-                throw OpenAIService.APIError.server("逐字稿失敗")
+                throw OpenAIService.APIError.server(String(localized: "逐字稿失敗"))
             }
 
             // Episodes longer than ~15 min are split into time-based parts, each
@@ -855,8 +855,8 @@ final class AIContentStore: ObservableObject {
             for (i, segment) in segments.enumerated() {
                 try Task.checkCancellation()
                 jobs[k] = segments.count > 1
-                    ? .running("生成講義中…（\(i + 1)/\(segments.count)）")
-                    : .running("生成講義中…")
+                    ? .running(String(localized: "生成講義中…（\(i + 1)/\(segments.count)）"))
+                    : .running(String(localized: "生成講義中…"))
                 let partTitle = segments.count > 1
                     ? Self.partTitle(index: i, total: segments.count, duration: record.durationSeconds)
                     : nil
@@ -884,10 +884,10 @@ final class AIContentStore: ObservableObject {
         let settings = SettingsStore.shared
         let language = settings.translationLanguage
         guard let text = transcriptText(id) else {
-            translationJobs[id] = .failed("找不到逐字稿")
+            translationJobs[id] = .failed(String(localized: "找不到逐字稿"))
             return
         }
-        translationJobs[id] = .running("翻譯中…")
+        translationJobs[id] = .running(String(localized: "翻譯中…"))
         do {
             let sentences = Self.displaySentences(text)
             // Publish each finished batch (~40 sentences) so the transcript screen

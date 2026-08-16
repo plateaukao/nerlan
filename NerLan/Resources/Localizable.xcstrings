@@ -1,0 +1,2472 @@
+{
+  "sourceLanguage": "zh-Hant",
+  "strings": {
+    "": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "%@": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "%@ 請求失敗（HTTP %lld）%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ request failed (HTTP %lld)%@"
+          }
+        }
+      }
+    },
+    "%lld 分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldm"
+          }
+        }
+      }
+    },
+    "%lld 小時 %lld 分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldh %lldm"
+          }
+        }
+      }
+    },
+    "%lld 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%llds"
+          }
+        }
+      }
+    },
+    "%lld%%": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "%lld時": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld:00"
+          }
+        }
+      }
+    },
+    "0 分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0m"
+          }
+        }
+      }
+    },
+    "0.5 倍速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.5× speed"
+          }
+        }
+      }
+    },
+    "0.75 倍速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.75× speed"
+          }
+        }
+      }
+    },
+    "1 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once"
+          }
+        }
+      }
+    },
+    "1.25 倍速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1.25× speed"
+          }
+        }
+      }
+    },
+    "1.5 倍速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1.5× speed"
+          }
+        }
+      }
+    },
+    "1.75 倍速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1.75× speed"
+          }
+        }
+      }
+    },
+    "2 倍速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2× speed"
+          }
+        }
+      }
+    },
+    "2 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2×"
+          }
+        }
+      }
+    },
+    "3 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3×"
+          }
+        }
+      }
+    },
+    "5 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5×"
+          }
+        }
+      }
+    },
+    "AI": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "AI 內容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Content"
+          }
+        }
+      }
+    },
+    "AI 講義": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Handout"
+          }
+        }
+      }
+    },
+    "API 來源": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Provider"
+          }
+        }
+      }
+    },
+    "API 金鑰（可留空）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API key (optional)"
+          }
+        }
+      }
+    },
+    "EP%lld": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "Google Drive 同步": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive Sync"
+          }
+        }
+      }
+    },
+    "Google 帳戶": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Account"
+          }
+        }
+      }
+    },
+    "NerLan 還沒有播放紀錄。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "NerLan has nothing in its play history yet."
+          }
+        }
+      }
+    },
+    "OpenAI API 金鑰": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenAI API Key"
+          }
+        }
+      }
+    },
+    "OpenAI 官方": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenAI"
+          }
+        }
+      }
+    },
+    "Siri 名稱": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siri Name"
+          }
+        }
+      }
+    },
+    "Siri 用它自己的語言聽你說話，聽不出韓文、日文這類原文名稱。設一個你唸得出來的名字，就能說「Play %@ in NerLan」。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siri listens in its own language and can’t hear native titles in Korean, Japanese, and the like. Give the show a name you can pronounce, then say “Play %@ in NerLan”."
+          }
+        }
+      }
+    },
+    "Siri 聽得懂的說法": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A name Siri can hear"
+          }
+        }
+      }
+    },
+    "iCloud 同步": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync"
+          }
+        }
+      }
+    },
+    "sk-…": {
+      "extractionState": "manual",
+      "shouldTranslate": false
+    },
+    "下一集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next Episode"
+          }
+        }
+      }
+    },
+    "下載": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloads"
+          }
+        }
+      }
+    },
+    "下載 RSS 失敗（HTTP %lld）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t download the RSS feed (HTTP %lld)"
+          }
+        }
+      }
+    },
+    "串流快取": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Streaming Cache"
+          }
+        }
+      }
+    },
+    "串流時自動快取": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cache while streaming"
+          }
+        }
+      }
+    },
+    "今天聽了 %lld 分鐘，這週累計 %lld 分鐘。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You listened %lld minutes today, %lld minutes this week."
+          }
+        }
+      }
+    },
+    "今天聽了 %lld 分鐘，這週累計 %lld 分鐘，已經連續 %lld 天了。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You listened %lld minutes today and %lld minutes this week — a %lld-day streak."
+          }
+        }
+      }
+    },
+    "今日": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today"
+          }
+        }
+      }
+    },
+    "佔用空間": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Space Used"
+          }
+        }
+      }
+    },
+    "使用統計": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage"
+          }
+        }
+      }
+    },
+    "例如：Didi": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For example: Didi"
+          }
+        }
+      }
+    },
+    "停用思考模式（no think）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disable thinking (no think)"
+          }
+        }
+      }
+    },
+    "儲存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "全部": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All"
+          }
+        }
+      }
+    },
+    "共 %lld 集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld episodes"
+          }
+        }
+      }
+    },
+    "其他": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other"
+          }
+        }
+      }
+    },
+    "分鐘": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes"
+          }
+        }
+      }
+    },
+    "刪除%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete %@"
+          }
+        }
+      }
+    },
+    "刪除已儲存的逐字稿與 AI 講義。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deletes saved transcripts and AI handouts."
+          }
+        }
+      }
+    },
+    "刪除註記": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Note"
+          }
+        }
+      }
+    },
+    "到 Apple Podcasts 搜尋節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Apple Podcasts"
+          }
+        }
+      }
+    },
+    "取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "取消訂閱": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsubscribe"
+          }
+        }
+      }
+    },
+    "同步中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing…"
+          }
+        }
+      }
+    },
+    "同步到 Google Drive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync to Google Drive"
+          }
+        }
+      }
+    },
+    "同步到 iCloud": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync to iCloud"
+          }
+        }
+      }
+    },
+    "同步失敗：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync failed: %@"
+          }
+        }
+      }
+    },
+    "問問自己這週在 NerLan 聽了多久。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask how long you’ve listened in NerLan this week."
+          }
+        }
+      }
+    },
+    "單集列表": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episodes"
+          }
+        }
+      }
+    },
+    "單集列表（共 %lld 集）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episodes (%lld total)"
+          }
+        }
+      }
+    },
+    "單集編號": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episode ID"
+          }
+        }
+      }
+    },
+    "在區域網路上搜尋 whisperASR 轉錄伺服器（_whisperasr._tcp）。請確認伺服器已啟用 API 服務並開啟區域網路存取，且兩台裝置在同一個 Wi-Fi。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looks for a whisperASR transcription server on the local network (_whisperasr._tcp). Make sure the server has its API enabled and local network access allowed, and that both devices are on the same Wi-Fi."
+          }
+        }
+      }
+    },
+    "在播放器或單集列表點選逐字稿或 AI 講義圖示來產生內容，就會出現在這裡。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the transcript or AI handout icon in the player or episode list to generate content, and it shows up here."
+          }
+        }
+      }
+    },
+    "在目前的單集內前後跳 15 秒。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jump 15 seconds forward or back within the current episode."
+          }
+        }
+      }
+    },
+    "在節目頁面點選下載按鈕，即可離線收聽。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the download button on a show’s page to listen offline."
+          }
+        }
+      }
+    },
+    "好": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "字幕": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subtitles"
+          }
+        }
+      }
+    },
+    "學習紀錄": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening Stats"
+          }
+        }
+      }
+    },
+    "完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "完成單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episodes Finished"
+          }
+        }
+      }
+    },
+    "寫下這一集的內容…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jot down what this episode covers…"
+          }
+        }
+      }
+    },
+    "尚未設定 OpenAI API 金鑰": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No OpenAI API key set"
+          }
+        }
+      }
+    },
+    "尚未設定 OpenAI API 金鑰，無法翻譯。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set an OpenAI API key before translating."
+          }
+        }
+      }
+    },
+    "已下載": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloaded"
+          }
+        }
+      }
+    },
+    "已下載單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloaded Episodes"
+          }
+        }
+      }
+    },
+    "已同步（↑%lld ↓%lld）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synced (↑%lld ↓%lld)"
+          }
+        }
+      }
+    },
+    "已同步（↑%lld ↓%lld），%lld 個檔案無法解析，已略過": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synced (↑%lld ↓%lld); skipped %lld unreadable files"
+          }
+        }
+      }
+    },
+    "從上次停下的地方繼續播放。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick up where you left off."
+          }
+        }
+      }
+    },
+    "從上次停下的地方繼續播放整個節目。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume the whole show from where you left off."
+          }
+        }
+      }
+    },
+    "從這裡播放": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play From Here"
+          }
+        }
+      }
+    },
+    "快取單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cached Episodes"
+          }
+        }
+      }
+    },
+    "快取大小": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cache Size"
+          }
+        }
+      }
+    },
+    "快轉或倒轉": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip Forward or Back"
+          }
+        }
+      }
+    },
+    "恢復預設模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Default Models"
+          }
+        }
+      }
+    },
+    "我的 Podcast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My Podcasts"
+          }
+        }
+      }
+    },
+    "找不到「%@」的單集，請先在 NerLan 裡打開這個節目。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No episodes found for “%@”. Open the show in NerLan first."
+          }
+        }
+      }
+    },
+    "找不到對應的 Podcast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching podcast found"
+          }
+        }
+      }
+    },
+    "找不到逐字稿": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcript not found"
+          }
+        }
+      }
+    },
+    "找不到音訊檔": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio file not found"
+          }
+        }
+      }
+    },
+    "找到的伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servers Found"
+          }
+        }
+      }
+    },
+    "搜尋中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searching…"
+          }
+        }
+      }
+    },
+    "搜尋區域網路伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search the local network"
+          }
+        }
+      }
+    },
+    "搜尋想聽的節目後，複製節目連結貼回此處。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find the show you want, then copy its link and paste it here."
+          }
+        }
+      }
+    },
+    "搜尋轉錄伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find Transcription Server"
+          }
+        }
+      }
+    },
+    "播放單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Episode"
+          }
+        }
+      }
+    },
+    "播放或暫停": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play or Pause"
+          }
+        }
+      }
+    },
+    "播放或暫停目前的單集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play or pause the current episode."
+          }
+        }
+      }
+    },
+    "播放指定的單集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play a specific episode."
+          }
+        }
+      }
+    },
+    "播放指定的節目，從上次停下的地方繼續。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play a show, picking up where you left off."
+          }
+        }
+      }
+    },
+    "播放指定節目最新的一集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play a show’s newest episode."
+          }
+        }
+      }
+    },
+    "播放最新一集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Latest Episode"
+          }
+        }
+      }
+    },
+    "播放節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Show"
+          }
+        }
+      }
+    },
+    "播放速度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback Speed"
+          }
+        }
+      }
+    },
+    "支援 Apple Podcasts 連結（podcasts.apple.com）或 RSS feed 網址。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supports Apple Podcasts links (podcasts.apple.com) and RSS feed addresses."
+          }
+        }
+      }
+    },
+    "收藏": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorites"
+          }
+        }
+      }
+    },
+    "收藏單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorite Episodes"
+          }
+        }
+      }
+    },
+    "收藏節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorite Shows"
+          }
+        }
+      }
+    },
+    "整理句子中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Splitting sentences…"
+          }
+        }
+      }
+    },
+    "整理句子中…（%lld/%lld）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Splitting sentences… (%lld/%lld)"
+          }
+        }
+      }
+    },
+    "新增": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        }
+      }
+    },
+    "新增 Podcast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Podcast"
+          }
+        }
+      }
+    },
+    "新增註記": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Note"
+          }
+        }
+      }
+    },
+    "日期": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Date"
+          }
+        }
+      }
+    },
+    "是否為 Podcast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Is Podcast"
+          }
+        }
+      }
+    },
+    "時": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hour"
+          }
+        }
+      }
+    },
+    "最常聽節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Most Played"
+          }
+        }
+      }
+    },
+    "本月": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Month"
+          }
+        }
+      }
+    },
+    "本週": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Week"
+          }
+        }
+      }
+    },
+    "查詢學習時間": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Listening Time"
+          }
+        }
+      }
+    },
+    "模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Models"
+          }
+        }
+      }
+    },
+    "正常速度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Normal speed"
+          }
+        }
+      }
+    },
+    "沒有 AI 內容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No AI Content"
+          }
+        }
+      }
+    },
+    "沒有下載的單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Downloads"
+          }
+        }
+      }
+    },
+    "沒有單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Episodes"
+          }
+        }
+      }
+    },
+    "沒有快取的單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing Cached"
+          }
+        }
+      }
+    },
+    "沒有收藏": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Favorites"
+          }
+        }
+      }
+    },
+    "沒有逐字稿內容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Transcript"
+          }
+        }
+      }
+    },
+    "沒有附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Attachment"
+          }
+        }
+      }
+    },
+    "清除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear"
+          }
+        }
+      }
+    },
+    "清除快取音檔": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Cached Audio"
+          }
+        }
+      }
+    },
+    "清除所有 AI 內容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete All AI Content"
+          }
+        }
+      }
+    },
+    "準備逐字稿…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing transcript…"
+          }
+        }
+      }
+    },
+    "無法使用麥克風": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone Unavailable"
+          }
+        }
+      }
+    },
+    "無法解析 OpenAI 回應": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t read the OpenAI response"
+          }
+        }
+      }
+    },
+    "無法解析這個 RSS": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t read this RSS feed"
+          }
+        }
+      }
+    },
+    "無法載入附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t Load Attachment"
+          }
+        }
+      }
+    },
+    "無法開啟 Google 登入視窗，請再試一次。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t open the Google sign-in window. Please try again."
+          }
+        }
+      }
+    },
+    "無限": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forever"
+          }
+        }
+      }
+    },
+    "生成講義中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Building handout…"
+          }
+        }
+      }
+    },
+    "生成講義中…（%lld/%lld）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Building handout… (%lld/%lld)"
+          }
+        }
+      }
+    },
+    "用 + 貼上 Apple Podcasts 或 RSS 網址即可訂閱。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap + and paste an Apple Podcasts or RSS address to subscribe."
+          }
+        }
+      }
+    },
+    "登入 Google 並開啟同步": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to Google and turn on sync"
+          }
+        }
+      }
+    },
+    "登入中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing in…"
+          }
+        }
+      }
+    },
+    "登入失敗：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in failed: %@"
+          }
+        }
+      }
+    },
+    "登入已取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in cancelled"
+          }
+        }
+      }
+    },
+    "登出 Google": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out of Google"
+          }
+        }
+      }
+    },
+    "目前已快取 %@。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ cached so far."
+          }
+        }
+      }
+    },
+    "確定要清除快取音檔嗎？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear cached audio?"
+          }
+        }
+      }
+    },
+    "確定要清除所有 AI 內容嗎？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete all AI content?"
+          }
+        }
+      }
+    },
+    "秒數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seconds"
+          }
+        }
+      }
+    },
+    "立即同步": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Now"
+          }
+        }
+      }
+    },
+    "節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows"
+          }
+        }
+      }
+    },
+    "節目編號": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show ID"
+          }
+        }
+      }
+    },
+    "範圍": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Range"
+          }
+        }
+      }
+    },
+    "統計": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Statistics"
+          }
+        }
+      }
+    },
+    "網址格式不正確": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That address isn’t valid"
+          }
+        }
+      }
+    },
+    "編輯註記": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Note"
+          }
+        }
+      }
+    },
+    "總聆聽時間": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total Listening"
+          }
+        }
+      }
+    },
+    "繼續上次的節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Last Show"
+          }
+        }
+      }
+    },
+    "繼續播放節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Show"
+          }
+        }
+      }
+    },
+    "翻譯": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation"
+          }
+        }
+      }
+    },
+    "翻譯中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translating…"
+          }
+        }
+      }
+    },
+    "翻譯失敗": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation Failed"
+          }
+        }
+      }
+    },
+    "翻譯語言": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation Language"
+          }
+        }
+      }
+    },
+    "自訂": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom"
+          }
+        }
+      }
+    },
+    "與 OpenAI 模式相同（可留空）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same as OpenAI mode (optional)"
+          }
+        }
+      }
+    },
+    "與 OpenAI 相容的伺服器網址（到 /v1 為止），用於 /audio/transcriptions。本機伺服器通常不需金鑰。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An OpenAI-compatible server address (up to /v1) serving /audio/transcriptions. Local servers usually need no key."
+          }
+        }
+      }
+    },
+    "與 OpenAI 相容的伺服器網址（到 /v1 為止），用於 /chat/completions。講義、翻譯與句子斷句都會使用這個伺服器。\n本機 Ollama 的思考模型（qwen3、deepseek-r1 等）預設會輸出思考過程，開啟「停用思考模式」會傳送 reasoning_effort=none 將其關閉。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An OpenAI-compatible server address (up to /v1) serving /chat/completions. Handouts, translation, and sentence splitting all use this server.\nLocal Ollama reasoning models (qwen3, deepseek-r1, and the like) emit their thinking by default; “Disable thinking” sends reasoning_effort=none to turn that off."
+          }
+        }
+      }
+    },
+    "處理失敗": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Something Went Wrong"
+          }
+        }
+      }
+    },
+    "處理音訊中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing audio…"
+          }
+        }
+      }
+    },
+    "複製": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        }
+      }
+    },
+    "設定": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "設定播放速度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Playback Speed"
+          }
+        }
+      }
+    },
+    "註記": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Note"
+          }
+        }
+      }
+    },
+    "註記會顯示在單集列表，方便辨認每一集的內容。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notes appear in the episode list, so you can tell episodes apart at a glance."
+          }
+        }
+      }
+    },
+    "語言分布（已下載）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Languages (Downloaded)"
+          }
+        }
+      }
+    },
+    "語言學習": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Languages"
+          }
+        }
+      }
+    },
+    "調整 NerLan 的播放速度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change how fast NerLan plays."
+          }
+        }
+      }
+    },
+    "請到「設定 → NerLan」開啟麥克風權限，才能錄下你的朗讀。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow microphone access in Settings → NerLan to record yourself reading aloud."
+          }
+        }
+      }
+    },
+    "講義": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handout"
+          }
+        }
+      }
+    },
+    "講義模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handout Model"
+          }
+        }
+      }
+    },
+    "講義附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handout Attachments"
+          }
+        }
+      }
+    },
+    "講義／翻譯伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handout / Translation Server"
+          }
+        }
+      }
+    },
+    "講義／翻譯模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handout / Translation Model"
+          }
+        }
+      }
+    },
+    "貼上 Apple Podcasts 或 RSS 網址": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste an Apple Podcasts or RSS address"
+          }
+        }
+      }
+    },
+    "資料統計": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage"
+          }
+        }
+      }
+    },
+    "跟讀": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shadow"
+          }
+        }
+      }
+    },
+    "跳到播放佇列的下一集。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip to the next episode in the queue."
+          }
+        }
+      }
+    },
+    "載入中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading…"
+          }
+        }
+      }
+    },
+    "載入失敗": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t Load"
+          }
+        }
+      }
+    },
+    "轉錄中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcribing…"
+          }
+        }
+      }
+    },
+    "轉錄中…（%lld/%lld）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcribing… (%lld/%lld)"
+          }
+        }
+      }
+    },
+    "轉錄伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcription Server"
+          }
+        }
+      }
+    },
+    "轉錄模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcription Model"
+          }
+        }
+      }
+    },
+    "逐字稿": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcript"
+          }
+        }
+      }
+    },
+    "逐字稿失敗": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcription failed"
+          }
+        }
+      }
+    },
+    "逐字稿畫面的「翻譯」按鈕會把內容翻譯成這個語言（使用你的 OpenAI 額度，並會同步到 iCloud）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Translate button on the transcript screen renders content into this language (using your OpenAI credit, and synced to iCloud)."
+          }
+        }
+      }
+    },
+    "逐字稿與講義": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transcripts & Handouts"
+          }
+        }
+      }
+    },
+    "這個 RSS 沒有可播放的單集": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This RSS feed has no playable episodes"
+          }
+        }
+      }
+    },
+    "速度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speed"
+          }
+        }
+      }
+    },
+    "連續聆聽天數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening Streak"
+          }
+        }
+      }
+    },
+    "選擇 AI 逐字稿與講義要使用的伺服器。「自訂」可指向你自己（通常較便宜或本機）的 OpenAI 相容伺服器。兩組設定都會分別保存，可隨時切換。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose which server powers AI transcripts and handouts. “Custom” can point at your own (often cheaper, or local) OpenAI-compatible server. Both configurations are saved separately, so you can switch any time."
+          }
+        }
+      }
+    },
+    "還沒有節目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Shows Yet"
+          }
+        }
+      }
+    },
+    "重新產生": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerate"
+          }
+        }
+      }
+    },
+    "重複次數": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repeat Count"
+          }
+        }
+      }
+    },
+    "重複這句": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repeat This Line"
+          }
+        }
+      }
+    },
+    "重試": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "金鑰會安全地儲存在裝置的鑰匙圈中。逐字稿與 AI 講義會使用你的 OpenAI 額度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The key is stored securely in the device keychain. Transcripts and AI handouts use your own OpenAI credit."
+          }
+        }
+      }
+    },
+    "開啟串流快取後，播放過的單集會保留在這裡。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on streaming cache and episodes you finish will be kept here."
+          }
+        }
+      }
+    },
+    "開啟後，串流完整播放過的音檔會自動保存，下次播放免再下載（不會顯示在「下載」分頁）。%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, audio you stream all the way through is kept for offline replay, so it never downloads twice (it doesn’t appear in the Downloads tab). %@"
+          }
+        }
+      }
+    },
+    "開啟後，最愛、AI 逐字稿與講義、收聽統計與 Podcast 訂閱會備份到你的 Google Drive（隱藏的應用程式資料夾），並與 Android 版 App 互通。可與 iCloud 同步並用。音檔不會同步。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, favorites, AI transcripts and handouts, listening stats, and podcast subscriptions are backed up to your Google Drive (in the hidden app data folder) and shared with the Android app. Can run alongside iCloud sync. Audio is never synced."
+          }
+        }
+      }
+    },
+    "開啟後，逐字稿與 AI 講義會備份到 iCloud，並同步到你登入相同 Apple ID 的其他裝置（重新安裝後也會自動復原）。音檔不會同步。需登入 iCloud 並開啟 iCloud 雲碟。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, transcripts and AI handouts are backed up to iCloud and synced to your other devices signed in with the same Apple ID (and restored after a reinstall). Audio is never synced. Requires iCloud and iCloud Drive."
+          }
+        }
+      }
+    },
+    "開始聆聽後，這裡會顯示你的使用統計。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start listening and your stats will show up here."
+          }
+        }
+      }
+    },
+    "關閉": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        }
+      }
+    },
+    "附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attachment"
+          }
+        }
+      }
+    },
+    "需要重新登入 Google": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please sign in to Google again"
+          }
+        }
+      }
+    },
+    "顯示": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show"
+          }
+        }
+      }
+    },
+    "驗證講義／翻譯伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify Handout / Translation Server"
+          }
+        }
+      }
+    },
+    "驗證轉錄伺服器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify Transcription Server"
+          }
+        }
+      }
+    },
+    "點選單集的逐字稿、AI 講義或講義，內容會顯示在這裡。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open an episode’s transcript, AI handout, or handout and it appears here."
+          }
+        }
+      }
+    },
+    "點選節目或單集旁的愛心即可加入收藏。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the heart beside a show or episode to add it here."
+          }
+        }
+      }
+    },
+    "（無標題）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Untitled)"
+          }
+        }
+      }
+    },
+    "🔥 %lld 天": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "🔥 %lld days"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

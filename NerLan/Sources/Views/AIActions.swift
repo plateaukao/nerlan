@@ -20,7 +20,7 @@ struct AIActionButton: View {
     @State private var errorText = ""
 
     private var storeKind: AIContentStore.Kind { kind == .transcript ? .transcript : .handout }
-    private var title: String { kind == .transcript ? "逐字稿" : "AI 講義" }
+    private var title: String { kind == .transcript ? String(localized: "逐字稿") : String(localized: "AI 講義") }
 
     var body: some View {
         let job = ai.jobState(storeKind, record.id)

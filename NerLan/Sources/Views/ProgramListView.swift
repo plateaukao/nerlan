@@ -25,7 +25,7 @@ struct ProgramListView: View {
 
     /// The page title doubles as the mode indicator: a plain podcast list until
     /// the language catalog is there to justify the name.
-    private var title: String { catalogUnlocked ? "語言學習" : "節目" }
+    private var title: LocalizedStringKey { catalogUnlocked ? "語言學習" : "節目" }
 
     private var selectedLanguage: String? {
         // With no catalog there are no chips, so nothing can be filtered — and a
@@ -221,7 +221,7 @@ struct ProgramListView: View {
         ForEach(languages, id: \.self) { lang in
             languageChip(lang, label: lang)
         }
-        languageChip(nil, label: "全部")
+        languageChip(nil, label: String(localized: "全部"))
     }
 
     private func languageChip(_ lang: String?, label: String) -> some View {
