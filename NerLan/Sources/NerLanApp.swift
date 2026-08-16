@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         WidgetBridge.shared.start()
         // Publish the show names Siri is allowed to hear. The stores also do this
         // on every change, but a cold launch after a restore has to seed the set.
-        NerLanShortcuts.updateAppShortcutParameters()
+        SiriCatalog.publish()
         // Fill episode numbers into records persisted before the field existed,
         // so the Downloads/AI lists sort in course order (no-op once done).
         Task { await EpisodeNumberBackfill.run() }

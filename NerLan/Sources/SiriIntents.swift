@@ -20,6 +20,22 @@ import Foundation
 // no intent here: `PlayerManager` already registers `MPRemoteCommandCenter`
 // handlers, so Siri drives those for free whenever NerLan is the now-playing app.
 
+/// The one call every store makes when the set of shows changes.
+///
+/// Two things have to be re-announced, and forgetting either is silent: the App
+/// Shortcut parameter values Siri is allowed to *hear*, and (iOS 27) the Spotlight
+/// index Apple Intelligence *searches* when it routes a media request.
+enum SiriCatalog {
+    static func publish() {
+        NerLanShortcuts.updateAppShortcutParameters()
+        #if canImport(MediaIntents)
+        if #available(iOS 27.0, *) {
+            Task { await MediaSpotlightIndex.refresh() }
+        }
+        #endif
+    }
+}
+
 // MARK: - Show entity
 
 /// One playable show — a NER program or a subscribed podcast — as Siri and the
@@ -320,12 +336,20 @@ struct NerLanShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: SiriPlayShowIntent(),
+            // App name FIRST in the English variants. "Play <x> in NerLan" is a
+            // media-shaped utterance, and Siri's media domain classifies it before
+            // App Shortcut matching gets a turn — which is how these requests end
+            // up in Apple Podcasts. Leading with the app name makes the utterance
+            // unambiguously app-directed.
             phrases: [
-                "在 \(.applicationName) 播放 \(\.$show)",
-                "用 \(.applicationName) 播放 \(\.$show)",
-                "\(.applicationName) 播放 \(\.$show)",
+                "\(.applicationName) play \(\.$show)",
+                "In \(.applicationName) play \(\.$show)",
+                "Ask \(.applicationName) to play \(\.$show)",
                 "Play \(\.$show) in \(.applicationName)",
                 "Play \(\.$show) on \(.applicationName)",
+                "\(.applicationName) 播放 \(\.$show)",
+                "在 \(.applicationName) 播放 \(\.$show)",
+                "用 \(.applicationName) 播放 \(\.$show)",
             ],
             shortTitle: "播放節目",
             systemImageName: "play.circle.fill"
@@ -334,10 +358,12 @@ struct NerLanShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: SiriPlayLatestEpisodeIntent(),
             phrases: [
-                "在 \(.applicationName) 播放 \(\.$show) 的最新一集",
-                "用 \(.applicationName) 聽 \(\.$show) 最新一集",
+                "\(.applicationName) play the latest episode of \(\.$show)",
+                "Ask \(.applicationName) for the latest episode of \(\.$show)",
                 "Play the latest episode of \(\.$show) in \(.applicationName)",
                 "Play the newest episode of \(\.$show) on \(.applicationName)",
+                "\(.applicationName) 播放 \(\.$show) 的最新一集",
+                "在 \(.applicationName) 播放 \(\.$show) 的最新一集",
             ],
             shortTitle: "播放最新一集",
             systemImageName: "sparkles"

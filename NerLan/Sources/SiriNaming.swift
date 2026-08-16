@@ -52,7 +52,7 @@ final class ShowNicknameStore: ObservableObject {
         }
         try? JSONEncoder().encode(names).write(to: fileURL)
         // A nickname is only useful once Siri has been told about it.
-        NerLanShortcuts.updateAppShortcutParameters()
+        SiriCatalog.publish()
     }
 }
 
@@ -124,6 +124,10 @@ enum SiriNaming {
         for name in englishLanguages(language) {
             out.append(name)
             out.append("\(name) \(kind)")
+            // A phrasing with no media noun in it. Saying "podcast" out loud is
+            // what tips Siri's media classifier toward Apple Podcasts, so give
+            // the user a way to name the show that avoids the word entirely.
+            out.append("\(name) lesson")
         }
         var seen = Set<String>()
         return out.filter { !$0.isEmpty && seen.insert(fold($0)).inserted }

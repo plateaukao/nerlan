@@ -13,6 +13,7 @@
 #if canImport(MediaIntents)
 
 import AppIntents
+import CoreSpotlight
 import Foundation
 import MediaIntents
 
@@ -25,7 +26,7 @@ import MediaIntents
 
 @available(iOS 27.0, *)
 @AppEntity(schema: .audio.radioShow)
-struct RadioShowEntity {
+struct RadioShowEntity: IndexedEntity {
     static let defaultQuery = RadioShowEntityQuery()
 
     /// The Channel+ `programId`.
@@ -70,7 +71,7 @@ struct RadioShowEntityQuery: EntityQuery {
 
 @available(iOS 27.0, *)
 @AppEntity(schema: .audio.radioShowEpisode)
-struct RadioShowEpisodeEntity {
+struct RadioShowEpisodeEntity: IndexedEntity {
     static let defaultQuery = RadioShowEpisodeEntityQuery()
 
     let id: String
@@ -104,7 +105,7 @@ struct RadioShowEpisodeEntityQuery: EntityQuery {
 
 @available(iOS 27.0, *)
 @AppEntity(schema: .audio.podcastShow)
-struct PodcastShowEntity {
+struct PodcastShowEntity: IndexedEntity {
     static let defaultQuery = PodcastShowEntityQuery()
 
     /// The RSS feed URL — the identity `PodcastStore` already uses.
@@ -144,7 +145,7 @@ struct PodcastShowEntityQuery: EntityQuery {
 
 @available(iOS 27.0, *)
 @AppEntity(schema: .audio.podcastEpisode)
-struct PodcastEpisodeEntity {
+struct PodcastEpisodeEntity: IndexedEntity {
     static let defaultQuery = PodcastEpisodeEntityQuery()
 
     let id: String
@@ -195,6 +196,36 @@ struct WarmupAudioQueueResultEntity: TransientAppEntity {
     }
 
     init() {}
+}
+
+/// Publishes the catalog into Spotlight.
+///
+/// Adopting the schemas is necessary but *not sufficient*: Apple Intelligence
+/// finds app content through Spotlight's semantic index, so an unindexed app has
+/// nothing for Siri to match a media request against — and Siri falls back to
+/// Apple Podcasts. This is what puts NerLan's shows in the running at all.
+@available(iOS 27.0, *)
+enum MediaSpotlightIndex {
+    /// A named index, per Apple's guidance — the default index is for prototyping.
+    private static let index = CSSearchableIndex(name: "com.danielkao.NerLan.catalog")
+
+    /// Courses run to hundreds of episodes; shows are what people name out loud,
+    /// so episodes get a generous but bounded slice rather than the whole archive.
+    private static let episodeLimit = 400
+
+    @MainActor
+    static func refresh() async {
+        let radioShows = MediaCatalog.radioShows()
+        let podcastShows = MediaCatalog.podcastShows()
+        let radioEpisodes = MediaCatalog.records(podcast: false)
+            .prefix(episodeLimit).map(MediaCatalog.radioEpisode)
+        let podcastEpisodes = MediaCatalog.records(podcast: true)
+            .prefix(episodeLimit).map(MediaCatalog.podcastEpisode)
+        try? await index.indexAppEntities(radioShows)
+        try? await index.indexAppEntities(podcastShows)
+        try? await index.indexAppEntities(Array(radioEpisodes))
+        try? await index.indexAppEntities(Array(podcastEpisodes))
+    }
 }
 
 // MARK: - Search

@@ -61,7 +61,7 @@ final class RecentShowsStore: ObservableObject {
         // that were never favorited), but this runs on every episode load — only
         // re-announce when the *set* actually changed, not on a reorder.
         if Set(shows.map(\.id)) != idsBefore {
-            NerLanShortcuts.updateAppShortcutParameters()
+            SiriCatalog.publish()
         }
     }
 
