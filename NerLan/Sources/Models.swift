@@ -107,6 +107,7 @@ struct Program: Codable, Identifiable, Hashable {
 
     var id: String { programId }
     var language: String { languageTags?.contentLanguage?.first?.name ?? String(localized: "其他") }
+
     var level: String? { languageTags?.contentLevel?.first?.name }
     var coverURL: URL? { ChannelPlusAPI.imageURL(image?.imageRef) }
 
@@ -270,4 +271,25 @@ struct EpisodeRecord: Codable, Identifiable, Hashable {
         self.attachments = attachments
         self.episodeNo = episodeNo
     }
+}
+
+extension String {
+    /// Language labels are *stored* in Traditional Chinese: the value doubles as
+    /// the term `OpenAIService.transcriptionPrompt` is primed with, and as the
+    /// grouping key persisted in `downloads.json` / `favorites.json`. Translating
+    /// it at the source would change what the AI is told and re-key saved
+    /// records, so it is translated only when drawn.
+    ///
+    /// Labels the app itself produces (`PodcastFeedParser.mappedLanguage`) and
+    /// the common catalog languages are in the String Catalog; anything else —
+    /// a language name straight from the API — passes through unchanged.
+    var localizedLanguageName: String {
+        guard Self.translatableLanguageLabels.contains(self) else { return self }
+        return String(localized: String.LocalizationValue(self))
+    }
+
+    private static let translatableLanguageLabels: Set<String> = [
+        "英語", "日語", "韓語", "法語", "德語", "西語", "西班牙語", "越南語",
+        "印尼語", "泰語", "中文", "華語", "臺灣客語", "原住民族語言", "其他",
+    ]
 }

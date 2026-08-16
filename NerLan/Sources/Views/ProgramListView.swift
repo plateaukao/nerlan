@@ -192,7 +192,7 @@ struct ProgramListView: View {
             }
 
             ForEach(visibleGroups) { group in
-                Section(group.language) {
+                Section(group.language.localizedLanguageName) {
                     ForEach(group.programs) { program in
                         NavigationLink(value: program) {
                             ProgramRow(program: program)
@@ -219,7 +219,7 @@ struct ProgramListView: View {
     @ViewBuilder
     private var chipContent: some View {
         ForEach(languages, id: \.self) { lang in
-            languageChip(lang, label: lang)
+            languageChip(lang, label: lang.localizedLanguageName)
         }
         languageChip(nil, label: String(localized: "全部"))
     }

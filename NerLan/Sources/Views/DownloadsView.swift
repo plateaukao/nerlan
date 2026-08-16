@@ -185,7 +185,7 @@ struct DownloadsView: View {
                         ScrollAwayTitle(text: "下載")
                         #endif
                         ForEach(grouped, id: \.key) { group in
-                            Section(group.key) {
+                            Section(group.key.localizedLanguageName) {
                                 ForEach(group.records) { record in
                                     RecordRow(record: record, queue: group.records,
                                               downloadBadge: cached.contains(record.id) ? .cached : .downloaded)
@@ -277,7 +277,7 @@ struct RecordRow: View {
                             .font(.subheadline)
                             .foregroundStyle(isCurrent ? Color.accentColor : .primary)
                             .lineLimit(2)
-                        Text(subtitleOverride ?? "\(record.programName) · \(record.language)")
+                        Text(subtitleOverride ?? "\(record.programName) · \(record.language.localizedLanguageName)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if let note = notes.note(for: record.id) {

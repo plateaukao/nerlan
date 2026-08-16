@@ -86,7 +86,7 @@ struct PlayerView: View {
                         Text(player.current?.programName ?? "")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text(player.current?.language ?? "")
+                        Text(player.current?.language.localizedLanguageName ?? "")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }

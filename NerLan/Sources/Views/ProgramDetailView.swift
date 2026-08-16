@@ -94,7 +94,7 @@ struct ProgramDetailView: View {
                     Text(program.name)
                         .font(.headline)
                     HStack(spacing: 6) {
-                        Text(program.language)
+                        Text(program.language.localizedLanguageName)
                             .font(.caption)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)

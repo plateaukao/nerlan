@@ -57,6 +57,17 @@
         }
       }
     },
+    "中文": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chinese"
+          }
+        }
+      }
+    },
     "今天聽了多久、連續學習幾天。": {
       "extractionState": "manual",
       "localizations": {
@@ -134,6 +145,28 @@
         }
       }
     },
+    "印尼語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indonesian"
+          }
+        }
+      }
+    },
+    "原住民族語言": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indigenous Languages"
+          }
+        }
+      }
+    },
     "單集編號": {
       "extractionState": "manual",
       "localizations": {
@@ -196,6 +229,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Resume where you left off and keep the show rolling."
+          }
+        }
+      }
+    },
+    "德語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "German"
           }
         }
       }
@@ -310,6 +354,17 @@
         }
       }
     },
+    "日語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Japanese"
+          }
+        }
+      }
+    },
     "是否為 Podcast": {
       "extractionState": "manual",
       "localizations": {
@@ -350,6 +405,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Week %lld"
+          }
+        }
+      }
+    },
+    "法語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "French"
+          }
+        }
+      }
+    },
+    "泰語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thai"
           }
         }
       }
@@ -405,6 +482,72 @@
           "stringUnit": {
             "state": "translated",
             "value": "Up Next"
+          }
+        }
+      }
+    },
+    "臺灣客語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hakka"
+          }
+        }
+      }
+    },
+    "英語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English"
+          }
+        }
+      }
+    },
+    "華語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mandarin"
+          }
+        }
+      }
+    },
+    "西班牙語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spanish"
+          }
+        }
+      }
+    },
+    "西語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spanish"
+          }
+        }
+      }
+    },
+    "越南語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vietnamese"
           }
         }
       }
@@ -493,6 +636,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nothing to play yet\nDownload or favorite an episode"
+          }
+        }
+      }
+    },
+    "韓語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Korean"
           }
         }
       }

@@ -45,7 +45,7 @@ struct DataStatsView: View {
             if !languageRows.isEmpty {
                 Section("語言分布（已下載）") {
                     ForEach(languageRows, id: \.language) { row in
-                        LabeledContent(row.language, value: "\(row.count)")
+                        LabeledContent(row.language.localizedLanguageName, value: "\(row.count)")
                     }
                 }
             }

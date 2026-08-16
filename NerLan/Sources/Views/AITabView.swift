@@ -34,7 +34,7 @@ struct AITabView: View {
                         ScrollAwayTitle(text: "AI")
                         #endif
                         ForEach(grouped, id: \.key) { group in
-                            Section(group.key) {
+                            Section(group.key.localizedLanguageName) {
                                 ForEach(group.records) { record in
                                     RecordRow(record: record, queue: group.records, aiReadyOnly: true)
                                 }

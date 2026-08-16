@@ -377,6 +377,17 @@
         }
       }
     },
+    "中文": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chinese"
+          }
+        }
+      }
+    },
     "串流快取": {
       "extractionState": "manual",
       "localizations": {
@@ -571,6 +582,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Search Apple Podcasts"
+          }
+        }
+      }
+    },
+    "印尼語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indonesian"
+          }
+        }
+      }
+    },
+    "原住民族語言": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indigenous Languages"
           }
         }
       }
@@ -890,6 +923,29 @@
           "stringUnit": {
             "state": "translated",
             "value": "Play From Here"
+          }
+        }
+      }
+    },
+    "德語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "German"
+          }
+        }
+      }
+    },
+    "快取": {
+      "comment": "Enum raw value drawn via a runtime-built LocalizedStringKey; not seen by the extractor.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cached"
           }
         }
       }
@@ -1246,6 +1302,18 @@
         }
       }
     },
+    "日": {
+      "comment": "Enum raw value drawn via a runtime-built LocalizedStringKey; not seen by the extractor.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day"
+          }
+        }
+      }
+    },
     "日期": {
       "extractionState": "manual",
       "localizations": {
@@ -1253,6 +1321,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Date"
+          }
+        }
+      }
+    },
+    "日語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Japanese"
           }
         }
       }
@@ -1286,6 +1365,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Most Played"
+          }
+        }
+      }
+    },
+    "月": {
+      "comment": "Enum raw value drawn via a runtime-built LocalizedStringKey; not seen by the extractor.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Month"
           }
         }
       }
@@ -1418,6 +1509,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "No Attachment"
+          }
+        }
+      }
+    },
+    "法語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "French"
+          }
+        }
+      }
+    },
+    "泰語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thai"
           }
         }
       }
@@ -1829,6 +1942,17 @@
         }
       }
     },
+    "臺灣客語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hakka"
+          }
+        }
+      }
+    },
     "與 OpenAI 模式相同（可留空）": {
       "extractionState": "manual",
       "localizations": {
@@ -1862,6 +1986,28 @@
         }
       }
     },
+    "英語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English"
+          }
+        }
+      }
+    },
+    "華語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mandarin"
+          }
+        }
+      }
+    },
     "處理失敗": {
       "extractionState": "manual",
       "localizations": {
@@ -1891,6 +2037,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copy"
+          }
+        }
+      }
+    },
+    "西班牙語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spanish"
+          }
+        }
+      }
+    },
+    "西語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spanish"
           }
         }
       }
@@ -1935,6 +2103,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notes appear in the episode list, so you can tell episodes apart at a glance."
+          }
+        }
+      }
+    },
+    "語言": {
+      "comment": "Enum raw value drawn via a runtime-built LocalizedStringKey; not seen by the extractor.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language"
           }
         }
       }
@@ -2056,6 +2236,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Storage"
+          }
+        }
+      }
+    },
+    "越南語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vietnamese"
           }
         }
       }
@@ -2225,6 +2416,18 @@
         }
       }
     },
+    "週": {
+      "comment": "Enum raw value drawn via a runtime-built LocalizedStringKey; not seen by the extractor.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Week"
+          }
+        }
+      }
+    },
     "選擇 AI 逐字稿與講義要使用的伺服器。「自訂」可指向你自己（通常較便宜或本機）的 OpenAI 相容伺服器。兩組設定都會分別保存，可隨時切換。": {
       "extractionState": "manual",
       "localizations": {
@@ -2386,6 +2589,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Please sign in to Google again"
+          }
+        }
+      }
+    },
+    "韓語": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Korean"
           }
         }
       }
