@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Decide once, before any view reads the flag, whether this install
+        // predates the radio-catalog gate and so keeps its catalog.
+        NERCatalog.migrateExistingInstall()
         // Widget buttons post `AudioPlaybackIntent`s, which the system performs in
         // *this* process — sometimes after launching it in the background purely to
         // do so. Registering here (rather than from a view's onAppear) guarantees

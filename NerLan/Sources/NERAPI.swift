@@ -80,3 +80,52 @@ enum ChannelPlusAPI {
         return resp.data ?? []
     }
 }
+
+/// Whether the app surfaces the 國立教育廣播電台 catalog at all.
+///
+/// The radio programs aren't the app's own content, so a fresh install ships as
+/// a plain podcast player: no language chips, no program list — only the shows
+/// the user adds themselves with +. Pasting any `www.ner.gov.tw` URL into the
+/// Add-Podcast sheet reveals the catalog, and it stays revealed from then on.
+///
+/// Installs that predate this gate keep whatever they already had, via
+/// `migrateExistingInstall()`.
+enum NERCatalog {
+    /// UserDefaults key; also read directly by `ProgramListView`'s `@AppStorage`
+    /// so the browse tab reacts the moment the catalog is revealed.
+    static let unlockedKey = "nerCatalogUnlocked"
+
+    /// The host a pasted URL has to mention to reveal the catalog. (Deliberately
+    /// the public site, not the `channelplus.` API host this client talks to.)
+    private static let unlockHost = "www.ner.gov.tw"
+
+    static var isUnlocked: Bool { UserDefaults.standard.bool(forKey: unlockedKey) }
+
+    /// True when pasted text points at the NER site — the reveal gesture rather
+    /// than a podcast feed to subscribe to.
+    static func isUnlockURL(_ text: String) -> Bool {
+        text.lowercased().contains(unlockHost)
+    }
+
+    static func unlock() {
+        UserDefaults.standard.set(true, forKey: unlockedKey)
+    }
+
+    /// Run once at launch: an install from before the gate existed keeps the
+    /// catalog it already had, so an update never takes content away. Prior use
+    /// is detected from the app's own data files rather than from the stores, so
+    /// this can run before anything is loaded.
+    static func migrateExistingInstall() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: unlockedKey) == nil else { return }
+        defaults.set(hasExistingData, forKey: unlockedKey)
+    }
+
+    private static var hasExistingData: Bool {
+        if CatalogCache.loadPrograms()?.isEmpty == false { return true }
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return ["favorites.json", "favorite-programs.json", "downloads.json", "podcasts.json"]
+            .contains { fm.fileExists(atPath: docs.appendingPathComponent($0).path) }
+    }
+}

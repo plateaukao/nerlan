@@ -59,6 +59,14 @@ struct AddPodcastView: View {
     }
 
     private func add() async {
+        // A www.ner.gov.tw link isn't a feed to subscribe to — it's the gesture
+        // that reveals the radio catalog (see `NERCatalog`). The browse tab is
+        // watching the flag, so dismissing is all the feedback needed.
+        if NERCatalog.isUnlockURL(trimmed) {
+            NERCatalog.unlock()
+            dismiss()
+            return
+        }
         // Tolerate a scheme-less paste (e.g. "podcasts.apple.com/...").
         var s = trimmed
         if !s.lowercased().hasPrefix("http") { s = "https://" + s }

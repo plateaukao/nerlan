@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Browse language-learning programs, filterable by language.
+/// Browse subscribed podcasts and — once the radio catalog is revealed (see
+/// `NERCatalog`) — language-learning programs, filterable by language.
 /// The full Channel+ catalog (~96 programs) loads in one request and is
 /// grouped by language client-side, so the chips filter instantly.
 struct ProgramListView: View {
@@ -17,9 +18,20 @@ struct ProgramListView: View {
     @State private var chipsExpanded = false
     /// Last chosen language filter, restored across launches ("" = 全部).
     @AppStorage("programLanguageFilter") private var storedLanguageFilter = ""
+    /// Whether the radio catalog is revealed at all. Read through `@AppStorage`
+    /// so pasting the NER URL in the Add-Podcast sheet lights this tab up
+    /// immediately (see `NERCatalog`).
+    @AppStorage(NERCatalog.unlockedKey) private var catalogUnlocked = false
+
+    /// The page title doubles as the mode indicator: a plain podcast list until
+    /// the language catalog is there to justify the name.
+    private var title: String { catalogUnlocked ? "語言學習" : "節目" }
 
     private var selectedLanguage: String? {
-        storedLanguageFilter.isEmpty ? nil : storedLanguageFilter
+        // With no catalog there are no chips, so nothing can be filtered — and a
+        // filter left over from before must not hide the podcast section.
+        guard catalogUnlocked, !storedLanguageFilter.isEmpty else { return nil }
+        return storedLanguageFilter
     }
 
     /// Chips lead with the most-studied languages so they stay on the visible
@@ -41,13 +53,15 @@ struct ProgramListView: View {
         NavigationStack(path: $path) {
             Group {
                 if let errorMessage {
-                    VStack(spacing: 0) {
-                        // On Mac the sidebar's segmented header replaces the title.
-                        #if !targetEnvironment(macCatalyst)
-                        TopTitle(text: "語言學習")
-                        #endif
+                    emptyState {
                         ContentUnavailableView("載入失敗", systemImage: "wifi.exclamationmark", description: Text(errorMessage))
-                            .frame(maxHeight: .infinity)
+                    }
+                } else if !catalogUnlocked, podcasts.feeds.isEmpty {
+                    // Fresh install: no catalog, nothing subscribed. The only
+                    // thing to do here is add a show.
+                    emptyState {
+                        ContentUnavailableView("還沒有節目", systemImage: "antenna.radiowaves.left.and.right",
+                                               description: Text("用 + 貼上 Apple Podcasts 或 RSS 網址即可訂閱。"))
                     }
                 } else {
                     list
@@ -57,6 +71,11 @@ struct ProgramListView: View {
             .task {
                 await loadInitial()
                 consumePendingNavigation()
+            }
+            // The catalog can be revealed from the Add-Podcast sheet while this
+            // view is already on screen, after its .task has run.
+            .onChange(of: catalogUnlocked) { _, unlocked in
+                if unlocked { Task { await loadInitial() } }
             }
             .refreshable { await reload() }
             // A widget deep link can land before the catalog has loaded, so try
@@ -100,43 +119,57 @@ struct ProgramListView: View {
         }
     }
 
+    /// An empty tab: the page title flush at the top (on Mac the sidebar's
+    /// segmented header replaces it) with the message filling the rest.
+    private func emptyState<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            #if !targetEnvironment(macCatalyst)
+            TopTitle(text: title)
+            #endif
+            content()
+                .frame(maxHeight: .infinity)
+        }
+    }
+
     private var list: some View {
         List {
             #if !targetEnvironment(macCatalyst)
-            ScrollAwayTitle(text: "語言學習")
+            ScrollAwayTitle(text: title)
             #endif
-            Section {
-                // Collapsed: one scrollable line of chips. Expanded: full wrap
-                // layout. (Don't hide overflow chips by parking them offscreen
-                // inside the Layout — List cells grow to enclose them.)
-                HStack(alignment: .top, spacing: 4) {
-                    if chipsExpanded {
-                        FlowLayout(spacing: 8) {
-                            chipContent
-                        }
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
+            if catalogUnlocked {
+                Section {
+                    // Collapsed: one scrollable line of chips. Expanded: full wrap
+                    // layout. (Don't hide overflow chips by parking them offscreen
+                    // inside the Layout — List cells grow to enclose them.)
+                    HStack(alignment: .top, spacing: 4) {
+                        if chipsExpanded {
+                            FlowLayout(spacing: 8) {
                                 chipContent
                             }
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    chipContent
+                                }
+                            }
                         }
+                        Button {
+                            chipsExpanded.toggle()
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(chipsExpanded ? 180 : 0))
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 4)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    Button {
-                        chipsExpanded.toggle()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(chipsExpanded ? 180 : 0))
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 4)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 2)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowSeparator(.hidden)
                 }
-                .padding(.vertical, 2)
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                .listRowSeparator(.hidden)
             }
 
             // Subscribed podcasts pinned above the NER catalog, shown only in the
@@ -226,7 +259,7 @@ struct ProgramListView: View {
     /// On first appearance, render the cached catalog if we have one (no network);
     /// only fetch when there's nothing cached. Pull-to-refresh uses `reload()`.
     private func loadInitial() async {
-        guard groups.isEmpty else { return }
+        guard catalogUnlocked, groups.isEmpty else { return }
         if let cached = CatalogCache.loadPrograms(), !cached.isEmpty {
             groups = group(cached)
             validateFilter()
@@ -236,6 +269,9 @@ struct ProgramListView: View {
     }
 
     private func reload() async {
+        // Nothing to pull when the catalog is hidden — the podcast section is
+        // refreshed by its own detail view.
+        guard catalogUnlocked else { return }
         isLoading = true
         errorMessage = nil
         do {
