@@ -16,6 +16,16 @@ struct SettingsView: View {
     @State private var chatProbe: ProbeState = .idle
     @State private var showServerDiscovery = false
 
+    /// Whether Settings offers the Google Drive section at all.
+    ///
+    /// Off for now: signing in with Google is a third-party-login surface App
+    /// Review looks closely at (guideline 4.8 wants Sign in with Apple offered
+    /// alongside it), and the Android bridge isn't worth that argument on a first
+    /// submission. Only the UI is gated — the sync engine, the stored toggle and
+    /// any existing Google session are untouched, so flipping this back to `true`
+    /// restores the feature exactly as it was.
+    private static let showsGoogleDriveSync = false
+
     /// Result of a custom-server readiness check (see `verifyRow`).
     enum ProbeState: Equatable {
         case idle, checking, ok
@@ -75,7 +85,9 @@ struct SettingsView: View {
                     Text("開啟後，逐字稿與 AI 講義會備份到 iCloud，並同步到你登入相同 Apple ID 的其他裝置（重新安裝後也會自動復原）。音檔不會同步。需登入 iCloud 並開啟 iCloud 雲碟。")
                 }
 
-                driveSection
+                if Self.showsGoogleDriveSync {
+                    driveSection
+                }
 
                 Section {
                     Button("清除所有 AI 內容", role: .destructive) {
