@@ -14,6 +14,7 @@ struct ProgramDetailView: View {
     @State private var totalCount = 0
     @State private var isLoading = false
     @State private var showFullIntro = false
+    @State private var showSiriName = false
 
     var body: some View {
         List {
@@ -69,6 +70,18 @@ struct ProgramDetailView: View {
                         .foregroundStyle(.pink)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showSiriName = true
+                } label: {
+                    Image(systemName: "quote.bubble")
+                }
+                .accessibilityLabel("Siri 名稱")
+            }
+        }
+        .sheet(isPresented: $showSiriName) {
+            SiriNameEditor(showId: program.programId, title: program.name,
+                           language: program.language, isPodcast: false)
         }
         .task { await loadInitial() }
     }

@@ -83,6 +83,15 @@ targets:
             NSUbiquitousContainerIsDocumentScopePublic: true
             NSUbiquitousContainerName: NerLan
             NSUbiquitousContainerSupportedFolderLevels: Any
+        # "NerLan" is a coined word, so Siri's speech recognizer mishears it in the
+        # App Shortcut phrases (which must name the app — see SiriIntents.swift).
+        # These give it spellings and a sounds-like hint to match against. Max 3
+        # entries per localized Info.plist; more is a programmer error.
+        INAlternativeAppNames:
+          - INAlternativeAppName: Ner Lan
+            INAlternativeAppNamePronunciationHint: nur lan
+          - INAlternativeAppName: NerLan
+            INAlternativeAppNamePronunciationHint: nair lan
         # Widgets deep-link back into the app with nerlan:// URLs (see DeepLink.swift).
         CFBundleURLTypes:
           - CFBundleURLName: com.danielkao.NerLan

@@ -152,6 +152,19 @@ final class PlayerManager: ObservableObject {
         load(record)
     }
 
+    /// Add to the queue without disturbing what's playing — "play this next" /
+    /// "add this to the queue", which the iOS 27 audio schema can ask for. With
+    /// nothing loaded there's no "next", so the records just become the queue.
+    func enqueue(_ records: [EpisodeRecord], playNext: Bool) {
+        let fresh = records.filter { !queue.contains($0) }
+        guard !fresh.isEmpty else { return }
+        guard let current, let i = queue.firstIndex(of: current) else {
+            queue.append(contentsOf: fresh)
+            return
+        }
+        queue.insert(contentsOf: fresh, at: playNext ? i + 1 : queue.count)
+    }
+
     /// Credit real time spent in the playing state to the listening stats. Called
     /// on each periodic tick; gaps from pause/seek/backgrounding (delta ≥ 5s) are
     /// dropped rather than counted as listening.

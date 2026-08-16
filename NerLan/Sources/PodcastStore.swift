@@ -97,6 +97,9 @@ final class PodcastStore: ObservableObject {
 
     private func persist() {
         try? JSONEncoder().encode(feeds).write(to: storeURL)
+        // Siri can only *hear* show names that were published ahead of time, so
+        // every change to the subscription set has to be re-announced.
+        NerLanShortcuts.updateAppShortcutParameters()
     }
 
     // MARK: - Google Drive sync (subscription ledger + reload)

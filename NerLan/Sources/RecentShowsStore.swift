@@ -52,10 +52,17 @@ final class RecentShowsStore: ObservableObject {
                           lastEpisodeId: record.id,
                           lastEpisodeTitle: record.title,
                           playedAt: Date())
+        let idsBefore = Set(shows.map(\.id))
         shows.removeAll { $0.id == entry.id }
         shows.insert(entry, at: 0)
         if shows.count > Self.limit { shows.removeLast(shows.count - Self.limit) }
         persist()
+        // Recents are the richest source of names Siri can hear (they cover shows
+        // that were never favorited), but this runs on every episode load — only
+        // re-announce when the *set* actually changed, not on a reorder.
+        if Set(shows.map(\.id)) != idsBefore {
+            NerLanShortcuts.updateAppShortcutParameters()
+        }
     }
 
     func entry(id: String) -> Entry? { shows.first { $0.id == id } }

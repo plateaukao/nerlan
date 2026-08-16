@@ -89,6 +89,7 @@ final class FavoritesStore: ObservableObject {
             }
         }
         try? JSONEncoder().encode(programs).write(to: programsURL)
+        NerLanShortcuts.updateAppShortcutParameters()
         DriveSync.requestSync()
     }
 
@@ -106,6 +107,7 @@ final class FavoritesStore: ObservableObject {
            let saved = try? JSONDecoder().decode([Program].self, from: data) {
             programs = saved
         }
+        NerLanShortcuts.updateAppShortcutParameters()
         guard syncing else { return }
         for record in favorites where CloudKVStore.shared.data(forKey: epKey(record.id)) == nil {
             if let data = try? JSONEncoder().encode(record) { CloudKVStore.shared.setDeferred(data, forKey: epKey(record.id)) }
@@ -179,6 +181,7 @@ final class FavoritesStore: ObservableObject {
         programs = progs
         try? JSONEncoder().encode(favorites).write(to: episodesURL)
         try? JSONEncoder().encode(programs).write(to: programsURL)
+        NerLanShortcuts.updateAppShortcutParameters()
         // Keep the Drive mirror in step with an iCloud-driven change.
         DriveSync.requestSync()
     }

@@ -9,6 +9,7 @@ struct PodcastDetailView: View {
 
     @EnvironmentObject var podcasts: PodcastStore
     @State private var showFullIntro = false
+    @State private var showSiriName = false
 
     /// Prefer the freshest stored copy (pull-to-refresh updates the store);
     /// fall back to the passed feed if it was just unsubscribed.
@@ -39,6 +40,20 @@ struct PodcastDetailView: View {
         // as the nav-bar title.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showSiriName = true
+                } label: {
+                    Image(systemName: "quote.bubble")
+                }
+                .accessibilityLabel("Siri 名稱")
+            }
+        }
+        .sheet(isPresented: $showSiriName) {
+            SiriNameEditor(showId: current.id, title: current.title,
+                           language: current.language, isPodcast: true)
+        }
         // No favorite/subscribe heart here: a podcast is added from the "+" and
         // removed by swiping its row in the 我的 Podcast list. A heart would read as
         // a Favorites-tab favorite, which podcast subscriptions are not.
