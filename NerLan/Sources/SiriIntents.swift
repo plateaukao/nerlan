@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import UIKit
 
 // Siri / Shortcuts surface. App-target only (unlike `WidgetPlaybackIntents.swift`,
 // which is shared with the widget extension) — these intents run in the app
@@ -20,6 +21,55 @@ import Foundation
 // no intent here: `PlayerManager` already registers `MPRemoteCommandCenter`
 // handlers, so Siri drives those for free whenever NerLan is the now-playing app.
 
+/// Cover art for Siri and Spotlight, as embeddable JPEG bytes.
+///
+/// Spotlight shows the app icon when a result carries no thumbnail of its own —
+/// which is why NerLan's entries looked bare next to other media apps. The bytes
+/// have to be available *synchronously*, because `displayRepresentation` is a
+/// plain computed property, and they have to be embedded rather than referenced:
+/// `CoverImageCache`'s files live in Caches, which the OS may purge, leaving a
+/// file URL dangling inside Spotlight's index. So the indexer warms this cache
+/// asynchronously first, and the entities read from it for free afterwards.
+enum SiriCoverThumbnails {
+    /// Plenty for a Spotlight row or a Siri card, small enough to embed per entity.
+    private static let pixelSize: CGFloat = 256
+
+    private static let lock = NSLock()
+    private static var cache: [String: Data] = [:]
+
+    static func data(for coverURL: String?) -> Data? {
+        guard let coverURL else { return nil }
+        lock.lock(); defer { lock.unlock() }
+        return cache[coverURL]
+    }
+
+    static func image(for coverURL: String?) -> DisplayRepresentation.Image? {
+        data(for: coverURL).map { DisplayRepresentation.Image(data: $0) }
+    }
+
+    /// Fetch and downscale anything not already held. Covers are shared across a
+    /// whole program, so the unique set is far smaller than the entity count.
+    static func warm(_ coverURLs: [String?]) async {
+        for coverURL in Set(coverURLs.compactMap { $0 }) {
+            if data(for: coverURL) != nil { continue }
+            guard let url = URL(string: coverURL),
+                  let image = await CoverImageCache.shared.image(for: url),
+                  let jpeg = downscaled(image) else { continue }
+            lock.lock(); cache[coverURL] = jpeg; lock.unlock()
+        }
+    }
+
+    private static func downscaled(_ image: UIImage) -> Data? {
+        let size = CGSize(width: pixelSize, height: pixelSize)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format)
+            .image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+            .jpegData(compressionQuality: 0.8)
+    }
+}
+
 /// The one call every store makes when the set of shows changes.
 ///
 /// Two things have to be re-announced, and forgetting either is silent: the App
@@ -27,12 +77,22 @@ import Foundation
 /// index Apple Intelligence *searches* when it routes a media request.
 enum SiriCatalog {
     static func publish() {
+        // Names first, synchronously — fetching artwork can hit the network, and
+        // Siri knowing what to listen for shouldn't wait on a cover download.
         NerLanShortcuts.updateAppShortcutParameters()
-        #if canImport(MediaIntents)
-        if #available(iOS 27.0, *) {
-            Task { await MediaSpotlightIndex.refresh() }
+        Task { @MainActor in
+            await SiriCoverThumbnails.warm(ShowCatalog.all().map(\.coverURL))
+            // Re-publish: the first pass serialized the entities before any
+            // artwork existed, so without this the cards stay bare until the
+            // next catalog change. Cheap on the second pass — the covers are
+            // cached by then.
+            NerLanShortcuts.updateAppShortcutParameters()
+            #if canImport(MediaIntents)
+            if #available(iOS 27.0, *) {
+                await MediaSpotlightIndex.refresh()
+            }
+            #endif
         }
-        #endif
     }
 }
 
@@ -48,6 +108,9 @@ struct ShowEntity: AppEntity, Identifiable {
     let name: String
     let language: String
     let isPodcast: Bool
+    /// Artwork for the Siri card and Spotlight row; nil until the cover has been
+    /// warmed into `SiriCoverThumbnails`.
+    var coverURL: String?
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         TypeDisplayRepresentation(name: "節目")
@@ -64,6 +127,7 @@ struct ShowEntity: AppEntity, Identifiable {
         DisplayRepresentation(
             title: "\(name)",
             subtitle: "\(language)",
+            image: SiriCoverThumbnails.image(for: coverURL),
             synonyms: SiriNaming.synonyms(
                 title: name, language: language, isPodcast: isPodcast,
                 nickname: ShowNicknameStore.shared.nickname(for: id)))
@@ -106,15 +170,16 @@ enum ShowCatalog {
         // were never favorited.
         for show in RecentShowsStore.shared.shows {
             add(ShowEntity(id: show.id, name: show.name, language: show.language,
-                           isPodcast: show.isPodcast))
+                           isPodcast: show.isPodcast, coverURL: show.coverURL))
         }
         for feed in PodcastStore.shared.feeds {
             add(ShowEntity(id: feed.id, name: feed.title, language: feed.language,
-                           isPodcast: true))
+                           isPodcast: true, coverURL: feed.coverURL))
         }
         for program in FavoritesStore.shared.programs {
             add(ShowEntity(id: program.programId, name: program.name,
-                           language: program.language, isPodcast: false))
+                           language: program.language, isPodcast: false,
+                           coverURL: program.coverURL?.absoluteString))
         }
         return out
     }

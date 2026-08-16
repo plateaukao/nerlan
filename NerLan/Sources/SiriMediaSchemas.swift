@@ -36,10 +36,14 @@ struct RadioShowEntity: IndexedEntity {
     /// program" as a synonym — see `SiriNaming`. `let`, so the schema macro
     /// leaves it out of the entity's exposed properties.
     let language: String
+    /// Artwork for the Spotlight row — without it Spotlight falls back to the
+    /// app icon. Same reasoning as `language`: `let`, so it stays out of the schema.
+    let coverURL: String?
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(title)",
+            image: SiriCoverThumbnails.image(for: coverURL),
             synonyms: SiriNaming.synonyms(
                 title: title, language: language, isPodcast: false,
                 nickname: ShowNicknameStore.shared.nickname(for: id)))
@@ -48,11 +52,12 @@ struct RadioShowEntity: IndexedEntity {
     // The schema macro rewrites the `var`s into `@Property`-backed computed
     // properties, so the synthesized memberwise init takes `EntityProperty`
     // values rather than plain ones. Every entity here spells its init out.
-    init(id: String, title: String, language: String = "") {
+    init(id: String, title: String, language: String = "", coverURL: String? = nil) {
         // Plain stored properties first: the schema macro turns `title` into a
         // computed property, and assigning one needs a fully initialized `self`.
         self.id = id
         self.language = language
+        self.coverURL = coverURL
         self.title = title
     }
 }
@@ -79,13 +84,18 @@ struct RadioShowEpisodeEntity: IndexedEntity {
     var showName: String?
     var releaseDate: Date?
     var show: RadioShowEntity?
+    /// See `RadioShowEntity.coverURL`.
+    let coverURL: String?
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)", subtitle: "\(showName ?? "")")
+        DisplayRepresentation(title: "\(title)", subtitle: "\(showName ?? "")",
+                              image: SiriCoverThumbnails.image(for: coverURL))
     }
 
-    init(id: String, title: String, showName: String?, releaseDate: Date?, show: RadioShowEntity?) {
+    init(id: String, title: String, showName: String?, releaseDate: Date?,
+         show: RadioShowEntity?, coverURL: String? = nil) {
         self.id = id
+        self.coverURL = coverURL
         self.title = title
         self.showName = showName
         self.releaseDate = releaseDate
@@ -114,18 +124,23 @@ struct PodcastShowEntity: IndexedEntity {
     var showDescription: String?
     /// See `RadioShowEntity.language`.
     let language: String
+    /// See `RadioShowEntity.coverURL`.
+    let coverURL: String?
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(title)",
+            image: SiriCoverThumbnails.image(for: coverURL),
             synonyms: SiriNaming.synonyms(
                 title: title, language: language, isPodcast: true,
                 nickname: ShowNicknameStore.shared.nickname(for: id)))
     }
 
-    init(id: String, title: String, showDescription: String?, language: String = "") {
+    init(id: String, title: String, showDescription: String?, language: String = "",
+         coverURL: String? = nil) {
         self.id = id
         self.language = language
+        self.coverURL = coverURL
         self.title = title
         self.showDescription = showDescription
     }
@@ -154,14 +169,18 @@ struct PodcastEpisodeEntity: IndexedEntity {
     var show: PodcastShowEntity?
     var releaseDate: Date?
     var duration: Double?
+    /// See `RadioShowEntity.coverURL`.
+    let coverURL: String?
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)", subtitle: "\(showName ?? "")")
+        DisplayRepresentation(title: "\(title)", subtitle: "\(showName ?? "")",
+                              image: SiriCoverThumbnails.image(for: coverURL))
     }
 
     init(id: String, title: String, showName: String?, show: PodcastShowEntity?,
-         releaseDate: Date?, duration: Double?) {
+         releaseDate: Date?, duration: Double?, coverURL: String? = nil) {
         self.id = id
+        self.coverURL = coverURL
         self.title = title
         self.showName = showName
         self.show = show
@@ -221,6 +240,12 @@ enum MediaSpotlightIndex {
             .prefix(episodeLimit).map(MediaCatalog.radioEpisode)
         let podcastEpisodes = MediaCatalog.records(podcast: true)
             .prefix(episodeLimit).map(MediaCatalog.podcastEpisode)
+        // Fetch and downscale the artwork *before* indexing: the entities read the
+        // bytes synchronously, so anything not warmed here is indexed with no
+        // thumbnail and shows the bare app icon in Spotlight.
+        await SiriCoverThumbnails.warm(
+            radioShows.map(\.coverURL) + podcastShows.map(\.coverURL)
+                + radioEpisodes.map(\.coverURL) + podcastEpisodes.map(\.coverURL))
         try? await index.indexAppEntities(radioShows)
         try? await index.indexAppEntities(podcastShows)
         try? await index.indexAppEntities(Array(radioEpisodes))
@@ -371,15 +396,18 @@ enum MediaCatalog {
     static func radioShows() -> [RadioShowEntity] {
         var seen = Set<String>()
         var out: [RadioShowEntity] = []
-        func add(id: String, title: String, language: String) {
+        func add(id: String, title: String, language: String, coverURL: String?) {
             guard seen.insert(id).inserted else { return }
-            out.append(RadioShowEntity(id: id, title: title, language: language))
+            out.append(RadioShowEntity(id: id, title: title, language: language,
+                                       coverURL: coverURL))
         }
         for show in RecentShowsStore.shared.shows where !show.isPodcast {
-            add(id: show.id, title: show.name, language: show.language)
+            add(id: show.id, title: show.name, language: show.language,
+                coverURL: show.coverURL)
         }
         for program in FavoritesStore.shared.programs {
-            add(id: program.programId, title: program.name, language: program.language)
+            add(id: program.programId, title: program.name, language: program.language,
+                coverURL: program.coverURL?.absoluteString)
         }
         return out
     }
@@ -387,7 +415,8 @@ enum MediaCatalog {
     static func podcastShows() -> [PodcastShowEntity] {
         PodcastStore.shared.feeds.map {
             PodcastShowEntity(id: $0.id, title: $0.title,
-                              showDescription: $0.descriptionText, language: $0.language)
+                              showDescription: $0.descriptionText, language: $0.language,
+                              coverURL: $0.coverURL)
         }
     }
 
@@ -468,7 +497,8 @@ enum MediaCatalog {
             showName: record.programName,
             releaseDate: record.playDate.flatMap(EpisodeRecord.parseISODate),
             show: RadioShowEntity(id: record.programId, title: record.programName,
-                                  language: record.language))
+                                  language: record.language, coverURL: record.coverURL),
+            coverURL: record.coverURL)
     }
 
     static func podcastEpisode(_ record: EpisodeRecord) -> PodcastEpisodeEntity {
@@ -477,9 +507,11 @@ enum MediaCatalog {
             title: record.title,
             showName: record.programName,
             show: PodcastShowEntity(id: record.programId, title: record.programName,
-                                    showDescription: nil, language: record.language),
+                                    showDescription: nil, language: record.language,
+                                    coverURL: record.coverURL),
             releaseDate: record.playDate.flatMap(EpisodeRecord.parseISODate),
-            duration: record.durationSeconds.map(Double.init))
+            duration: record.durationSeconds.map(Double.init),
+            coverURL: record.coverURL)
     }
 
     // MARK: Resolution

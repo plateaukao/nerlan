@@ -470,6 +470,23 @@ final class PlayerManager: ObservableObject {
             Task { @MainActor in self?.seek(to: e.positionTime) }
             return .success
         }
+        // "Hey Siri, skip forward 30 seconds" / "go back 15 seconds" arrive as
+        // these, and without handlers they silently do nothing. `preferredIntervals`
+        // is only the default the system offers (15 s, matching the full player's
+        // buttons) — Siri can ask for any interval, so honor what the event carries
+        // rather than the preferred value.
+        center.skipForwardCommand.preferredIntervals = [15]
+        center.skipBackwardCommand.preferredIntervals = [15]
+        center.skipForwardCommand.addTarget { [weak self] event in
+            guard let e = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            Task { @MainActor in self?.skip(e.interval) }
+            return .success
+        }
+        center.skipBackwardCommand.addTarget { [weak self] event in
+            guard let e = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            Task { @MainActor in self?.skip(-e.interval) }
+            return .success
+        }
     }
 
     private func updateNowPlayingInfo() {
