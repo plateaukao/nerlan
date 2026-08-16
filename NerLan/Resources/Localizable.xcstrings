@@ -215,6 +215,28 @@
         }
       }
     },
+    "AI 講義的說明文字，以及逐字稿畫面「翻譯」按鈕的目標語言。例句與單字會保留原文，不會被翻譯掉。（使用你的 OpenAI 額度，並會同步到 iCloud）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The language AI handout explanations are written in, and the target for the Translate button on the transcript screen. Example sentences and vocabulary stay in the language you're studying. (Uses your OpenAI credit, and syncs to iCloud.)"
+          }
+        }
+      }
+    },
+    "AI 輸出語言": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Output Language"
+          }
+        }
+      }
+    },
     "API 來源": {
       "extractionState": "manual",
       "localizations": {
@@ -1920,17 +1942,6 @@
         }
       }
     },
-    "翻譯語言": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Translation Language"
-          }
-        }
-      }
-    },
     "自訂": {
       "extractionState": "manual",
       "localizations": {
@@ -2357,17 +2368,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Transcription failed"
-          }
-        }
-      }
-    },
-    "逐字稿畫面的「翻譯」按鈕會把內容翻譯成這個語言（使用你的 OpenAI 額度，並會同步到 iCloud）。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The Translate button on the transcript screen renders content into this language (using your OpenAI credit, and synced to iCloud)."
           }
         }
       }

@@ -851,6 +851,8 @@ final class AIContentStore: ObservableObject {
             // handout.
             let segments = Self.handoutSegments(transcript, durationSeconds: record.durationSeconds)
             let chatConfig = settings.chatConfig
+            // Resolved once, on the main actor, before the awaits below.
+            let outputLanguage = settings.translationLanguage
             var fragments: [String] = []
             for (i, segment) in segments.enumerated() {
                 try Task.checkCancellation()
@@ -862,7 +864,7 @@ final class AIContentStore: ObservableObject {
                     : nil
                 fragments.append(try await OpenAIService.generateHandout(
                     transcript: segment, record: record, partTitle: partTitle,
-                    config: chatConfig))
+                    outputLanguage: outputLanguage, config: chatConfig))
             }
             try Task.checkCancellation()
             let html = Self.wrapHTML(fragments.joined(separator: "\n"), title: record.title)

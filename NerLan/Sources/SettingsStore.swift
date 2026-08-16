@@ -16,15 +16,33 @@ final class SettingsStore: ObservableObject {
 
     static let defaultChatModel = "gpt-4o"
     static let defaultTranscriptionModel = "whisper-1"
-    static let defaultTranslationLanguage = "繁體中文"
+
+    /// The AI output language a fresh install starts with: what the device is set
+    /// to, when we offer it, else English. (Previously hardcoded to 繁體中文, which
+    /// left an English-speaking user with Chinese handouts until they found the
+    /// setting.) Only affects new installs — an existing choice is persisted.
+    static var defaultTranslationLanguage: String {
+        let preferred = Locale.preferredLanguages.first ?? "en"
+        if preferred.hasPrefix("zh") { return "繁體中文" }
+        let code = String(preferred.prefix(2))
+        return localeToOption[code] ?? "English"
+    }
+
+    /// Device language code -> the display name used in `translationLanguageOptions`.
+    private static let localeToOption: [String: String] = [
+        "en": "English", "ja": "日本語", "ko": "한국어", "es": "Español",
+        "fr": "Français", "de": "Deutsch", "vi": "Tiếng Việt",
+        "id": "Bahasa Indonesia", "th": "ภาษาไทย",
+    ]
 
     /// Default value (and placeholder) for the custom server URLs — the official
     /// OpenAI base, so the field starts as a ready-to-edit template.
     static let defaultCustomServerURL = OpenAIService.officialBase.absoluteString
 
-    /// Languages the transcript "translate" button can render into. Display names
-    /// are passed straight into the translation prompt, so they're written the way
-    /// a native reader expects to see them.
+    /// Languages the AI can write in — the transcript "translate" target *and* the
+    /// language the study handout's explanations are written in. Display names are
+    /// passed straight into the prompts, so they're written the way a native reader
+    /// expects to see them.
     static let translationLanguageOptions = [
         "繁體中文", "English", "日本語", "한국어", "Español",
         "Français", "Deutsch", "Tiếng Việt", "Bahasa Indonesia", "ภาษาไทย",
@@ -118,7 +136,9 @@ final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(customChatNoThink, forKey: Self.customChatNoThinkKey) }
     }
 
-    /// Language the transcript screen's "translate" button renders into.
+    /// Language the AI writes in: the transcript screen's "translate" target, and
+    /// the language the study handout's explanations use. Example sentences and
+    /// vocabulary always stay in the language being studied.
     @Published var translationLanguage: String {
         didSet { UserDefaults.standard.set(translationLanguage, forKey: Self.translationLanguageKey) }
     }

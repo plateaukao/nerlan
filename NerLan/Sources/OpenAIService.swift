@@ -327,27 +327,50 @@ enum OpenAIService {
     /// drop to `h3` (nested under the part), so the document reads Part I →
     /// 內容說明/文法重點/例句/單字, Part II → …. When nil (≤15 min) the four
     /// sections are top-level `h2`.
+    /// `outputLanguage` is the display name of the language the explanations are
+    /// written in — the user's AI output language (see
+    /// `SettingsStore.translationLanguage`). Only the *explanations* follow it;
+    /// example sentences and vocabulary stay in the language being studied, which
+    /// is the whole point of the handout.
+    ///
+    /// The instructions are authored in English rather than Chinese so the output
+    /// language is a parameter instead of being baked into the prompt's own
+    /// wording. The section headings are requested in the target language too —
+    /// asking the model for them beats maintaining a heading table per language.
     static func generateHandout(transcript: String, record: EpisodeRecord,
-                                partTitle: String? = nil, config: Config) async throws -> String {
+                                partTitle: String? = nil, outputLanguage: String,
+                                config: Config) async throws -> String {
         guard !(config.requiresKey && config.apiKey.isEmpty) else { throw APIError.missingKey }
 
         let tag = partTitle == nil ? "h2" : "h3"
         let partNote = partTitle == nil ? ""
-            : "你收到的是整集節目其中一段（約 15 分鐘）的逐字稿，請只根據這一段的內容製作講義。"
+            : "You are given the transcript of one ~15-minute part of a longer episode; " +
+              "base the handout only on this part. "
         let system = """
-        你是一位專業的語言老師，正在為「\(record.language)」語言學習教材製作複習講義。\
-        \(partNote)\
-        你會收到一段廣播節目的逐字稿，請根據內容整理出一份適合學生複習的講義。\
-        說明文字一律使用「台灣繁體中文（正體字）」，絕對不要使用簡體字；例句與單字中的外語請保留原貌（不要翻譯或改成中文字）。\
-        並使用 HTML 格式輸出，依序分成四個區塊：\
-        <\(tag)>內容說明</\(tag)>（用幾句話說明這段內容的主題與大意）、\
-        <\(tag)>文法重點</\(tag)>（列出出現的文法句型，附簡短解說）、\
-        <\(tag)>例句</\(tag)>（從內容中挑選實用例句，逐句附上中文翻譯）、\
-        <\(tag)>單字</\(tag)>（重要單字表，含發音或拼音與中文意思，建議用表格呈現）。\
-        只輸出 HTML 內容片段（可使用 h2、h3、h4、p、ul、ol、li、table、tr、th、td、strong、em、ruby 等標籤），\
-        不要輸出 <html>、<head>、<body> 標籤，也不要使用 Markdown 或程式碼圍欄。
+        You are an experienced language teacher preparing a review handout for a \
+        learner studying \(record.language). \(partNote)\
+        You will be given the transcript of a radio/podcast episode.
+
+        Write ALL explanatory text in \(outputLanguage). If that language is a form \
+        of Chinese, use Traditional Chinese characters (正體字) and never Simplified. \
+        Keep example sentences and vocabulary in the language being studied — do not \
+        translate them away — and gloss each one in \(outputLanguage). Punctuate each \
+        piece of text the way its own language does: never end a Latin-script \
+        sentence with a CJK full stop (。) or comma (、).
+
+        Output an HTML fragment with exactly four sections in this order, and write \
+        each section heading in \(outputLanguage):
+        <\(tag)>Overview</\(tag)> — a few sentences on the topic and gist.
+        <\(tag)>Grammar points</\(tag)> — patterns that appear, each briefly explained.
+        <\(tag)>Example sentences</\(tag)> — useful lines from the content, each glossed.
+        <\(tag)>Vocabulary</\(tag)> — key words with pronunciation/romanisation and \
+        meaning, preferably as a table.
+
+        Emit only the HTML fragment (h2, h3, h4, p, ul, ol, li, table, tr, th, td, \
+        strong, em, ruby are all fine). Do not emit <html>, <head> or <body>, and do \
+        not use Markdown or code fences.
         """
-        let user = "節目：\(record.programName)\n單集：\(record.title)\n\n逐字稿：\n\(transcript)"
+        let user = "Show: \(record.programName)\nEpisode: \(record.title)\n\nTranscript:\n\(transcript)"
         let fragment = stripCodeFence(try await chat(system: system, user: user, config: config))
         guard let partTitle else { return fragment }
         return "<h2>\(partTitle)</h2>\n\(fragment)"
@@ -365,7 +388,9 @@ enum OpenAIService {
         let system = """
         你是一個只負責加上標點與斷句的文字編輯器。你會收到一段語音辨識（ASR）產生的逐字稿，通常缺少標點。\
         規則：\
-        1. 加入適當且必要的標點符號（句號、問號、驚嘆號、逗號等；中文用全形「，。？！」，外語用半形「,.?!」），並在每句結束後換行，每句一行。\
+        1. 加入適當且必要的標點符號，並在每句結束後換行，每句一行。標點必須符合該句所使用的文字：\
+        中文句子用全形「，。？！」；以拉丁字母、諺文、西里爾字母等非漢字書寫的句子（英語、法語、西班牙語、韓語…）\
+        一律使用半形「, . ? !」，【絕對不可】在這類句子後面加上全形句號「。」或頓號「、」。\
         2. 若原文該處已有適當的標點（例如已是「？」或「！」），請保留原樣，不要再額外加上句號或重複的標點。\
         3. 絕對不可更動任何原始內容：不可翻譯、改寫、增刪、調整字詞或更改任何字元。\
         4. 【最重要】原文若含有非中文文字（韓文諺文 한글、日文假名、英文字母、其他外語等），必須一字不差地原樣保留其原始文字與字母，嚴禁將其翻譯、音譯、或轉寫成中文／漢字。例如「안녕하세요」必須維持為「안녕하세요」，絕不可變成「你好」或任何漢字；簡繁字體也一律維持原樣。\

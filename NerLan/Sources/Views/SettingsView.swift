@@ -54,15 +54,15 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("翻譯語言", selection: $settings.translationLanguage) {
+                    Picker("AI 輸出語言", selection: $settings.translationLanguage) {
                         ForEach(SettingsStore.translationLanguageOptions, id: \.self) { lang in
                             Text(lang).tag(lang)
                         }
                     }
                 } header: {
-                    Text("翻譯")
+                    Text("AI 輸出語言")
                 } footer: {
-                    Text("逐字稿畫面的「翻譯」按鈕會把內容翻譯成這個語言（使用你的 OpenAI 額度，並會同步到 iCloud）。")
+                    Text("AI 講義的說明文字，以及逐字稿畫面「翻譯」按鈕的目標語言。例句與單字會保留原文，不會被翻譯掉。（使用你的 OpenAI 額度，並會同步到 iCloud）")
                 }
 
                 Section {
