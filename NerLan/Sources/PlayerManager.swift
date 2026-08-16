@@ -471,12 +471,14 @@ final class PlayerManager: ObservableObject {
             return .success
         }
         // "Hey Siri, skip forward 30 seconds" / "go back 15 seconds" arrive as
-        // these, and without handlers they silently do nothing. `preferredIntervals`
-        // is only the default the system offers (15 s, matching the full player's
-        // buttons) — Siri can ask for any interval, so honor what the event carries
-        // rather than the preferred value.
-        center.skipForwardCommand.preferredIntervals = [15]
-        center.skipBackwardCommand.preferredIntervals = [15]
+        // these, and without handlers they silently do nothing. Honor the interval
+        // the event carries — Siri can ask for any amount.
+        //
+        // Deliberately NO `preferredIntervals`: setting it makes the Now Playing
+        // UI draw ±N second skip buttons, and those take visual precedence over
+        // next/previous track even when both commands are enabled. The lock screen
+        // should keep next/previous *episode* for a sequential course, so the skip
+        // commands stay voice-only.
         center.skipForwardCommand.addTarget { [weak self] event in
             guard let e = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
             Task { @MainActor in self?.skip(e.interval) }
