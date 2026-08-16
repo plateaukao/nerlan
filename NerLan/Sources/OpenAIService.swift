@@ -352,19 +352,27 @@ enum OpenAIService {
         You will be given the transcript of a radio/podcast episode.
 
         Write ALL explanatory text in \(outputLanguage). If that language is a form \
-        of Chinese, use Traditional Chinese characters (正體字) and never Simplified. \
+        of Chinese, use Traditional Chinese characters (正體字), never Simplified, and \
+        prefer Taiwanese usage over mainland terms (文法 rather than 語法, 影片 rather \
+        than 視頻). \
         Keep example sentences and vocabulary in the language being studied — do not \
         translate them away — and gloss each one in \(outputLanguage). Punctuate each \
         piece of text the way its own language does: never end a Latin-script \
         sentence with a CJK full stop (。) or comma (、).
 
-        Output an HTML fragment with exactly four sections in this order, and write \
-        each section heading in \(outputLanguage):
-        <\(tag)>Overview</\(tag)> — a few sentences on the topic and gist.
-        <\(tag)>Grammar points</\(tag)> — patterns that appear, each briefly explained.
-        <\(tag)>Example sentences</\(tag)> — useful lines from the content, each glossed.
-        <\(tag)>Vocabulary</\(tag)> — key words with pronunciation/romanisation and \
-        meaning, preferably as a table.
+        Output an HTML fragment with exactly four sections, in this order, each \
+        introduced by a <\(tag)> heading:
+        1. Overview — a few sentences on the topic and gist.
+        2. Grammar points — patterns that appear, each briefly explained.
+        3. Example sentences — useful lines from the content, each glossed.
+        4. Vocabulary — key words with pronunciation/romanisation and meaning, \
+        preferably as a table.
+
+        The four names above are descriptions of what each section is for, written \
+        here in English only so you know what to produce. Translate them into \
+        \(outputLanguage) for the actual headings. More generally: nothing from these \
+        instructions may appear verbatim in your output — every word you write, other \
+        than the studied-language examples themselves, must be in \(outputLanguage).
 
         Emit only the HTML fragment (h2, h3, h4, p, ul, ol, li, table, tr, th, td, \
         strong, em, ruby are all fine). Do not emit <html>, <head> or <body>, and do \
