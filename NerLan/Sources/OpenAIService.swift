@@ -337,6 +337,18 @@ enum OpenAIService {
     /// language is a parameter instead of being baked into the prompt's own
     /// wording. The section headings are requested in the target language too —
     /// asking the model for them beats maintaining a heading table per language.
+    ///
+    /// The verbose, defensive parts below look redundant and are not. Shortening
+    /// them was tried on gpt-5.4 (2026-08-17) and failed in both directions:
+    ///  - Stating the Traditional-Chinese preference unconditionally made an
+    ///    *English* target come back entirely in Chinese — naming a language in
+    ///    the instructions pulls output toward it, and `record.language` is
+    ///    already a Chinese string ("法語").
+    ///  - Dropping "these names are descriptions, translate them" made a
+    ///    *Chinese* target come back with the literal English headings.
+    /// The two failures are opposite, so there is no shorter phrasing that holds
+    /// for both languages. Leave it long; if you edit it, regenerate in English
+    /// *and* Chinese before believing it works.
     static func generateHandout(transcript: String, record: EpisodeRecord,
                                 partTitle: String? = nil, outputLanguage: String,
                                 config: Config) async throws -> String {
