@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.16</string>
+	<string>1.17</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -30,7 +30,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>18</string>
+	<string>19</string>
 	<key>INAlternativeAppNames</key>
 	<array>
 		<dict>
@@ -58,9 +58,9 @@
 		<string>_whisperasr._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>NerLan 會在區域網路上搜尋你的 whisperASR 轉錄伺服器，方便自動填入伺服器網址。</string>
+	<string>NerLan 會在區域網路上搜尋你自己架設的 whisperASR 轉錄伺服器，自動填入伺服器網址，省去手動輸入。不會掃描或回報網路上的其他任何東西。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>NerLan 會錄下你朗讀的聲音，讓你和原音對照練習跟讀。</string>
+	<string>在跟讀練習中，NerLan 會錄下你朗讀句子的聲音，讓你和原音對照播放、比較自己的發音。錄音只會留在這台裝置上，不會上傳。</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.danielkao.NerLan</key>

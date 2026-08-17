@@ -48,8 +48,8 @@ targets:
       path: NerLan/Resources/Info.plist
       properties:
         CFBundleDisplayName: NerLan
-        CFBundleShortVersionString: "1.16"
-        CFBundleVersion: "18"
+        CFBundleShortVersionString: "1.17"
+        CFBundleVersion: "19"
         # The app uses only standard HTTPS / Apple-provided crypto (App Transport
         # Security, Keychain) — exempt from export-compliance docs. Declaring this
         # skips the per-build encryption prompt on every TestFlight upload.
@@ -59,7 +59,10 @@ targets:
         # Shadowing practice records the learner reading a sentence aloud so they
         # can play it back against the original; required before AVAudioRecorder
         # can start.
-        NSMicrophoneUsageDescription: NerLan 會錄下你朗讀的聲音，讓你和原音對照練習跟讀。
+        # Fallback only — the shipped strings come from InfoPlist.xcstrings, which
+        # must carry an explicit value for EVERY language (a String Catalog falls
+        # back to the key, and here the key is the plist key name).
+        NSMicrophoneUsageDescription: 在跟讀練習中，NerLan 會錄下你朗讀句子的聲音，讓你和原音對照播放、比較自己的發音。錄音只會留在這台裝置上，不會上傳。
         # iPhone rotates to landscape too: the player sheet drops its cover/header
         # in compact height (PlayerView) so the controls still fit. (No upside-down
         # on iPhone, per convention.)
@@ -83,7 +86,8 @@ targets:
         # Bonjour discovery of the user's self-hosted whisperASR transcription
         # server (Settings → 自訂 → 搜尋). iOS blocks mDNS browsing unless the
         # service type is declared here and the purpose string is present.
-        NSLocalNetworkUsageDescription: NerLan 會在區域網路上搜尋你的 whisperASR 轉錄伺服器，方便自動填入伺服器網址。
+        # Fallback only — see NSMicrophoneUsageDescription above.
+        NSLocalNetworkUsageDescription: NerLan 會在區域網路上搜尋你自己架設的 whisperASR 轉錄伺服器，自動填入伺服器網址，省去手動輸入。不會掃描或回報網路上的其他任何東西。
         NSBonjourServices:
           - _whisperasr._tcp
         # Surface the iCloud container as a "NerLan" folder in the Files app so
@@ -151,8 +155,8 @@ targets:
       path: NerLanWidgets/Info.plist
       properties:
         CFBundleDisplayName: NerLan
-        CFBundleShortVersionString: "1.16"
-        CFBundleVersion: "18"
+        CFBundleShortVersionString: "1.17"
+        CFBundleVersion: "19"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
