@@ -1,26 +1,38 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
-    "NSMicrophoneUsageDescription" : {
-      "comment" : "Shown when shadowing practice first asks to record the learner reading aloud.",
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Shown before Bonjour browsing for a self-hosted whisperASR transcription server. Every language needs an explicit value: unlike Localizable.xcstrings, the keys here are Info.plist key names, so a missing translation falls back to the literal key text.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "NerLan records you reading aloud so you can compare your delivery with the original audio."
+            "value" : "NerLan searches your local network for your own whisperASR transcription server, so it can fill in the server address for you instead of making you type it. Nothing else on the network is scanned or reported."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NerLan 會在區域網路上搜尋你自己架設的 whisperASR 轉錄伺服器，自動填入伺服器網址，省去手動輸入。不會掃描或回報網路上的其他任何東西。"
           }
         }
       }
     },
-    "NSLocalNetworkUsageDescription" : {
-      "comment" : "Shown before Bonjour browsing for a self-hosted whisperASR transcription server.",
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "Shown when shadowing practice first asks to record the learner reading aloud. See the note on NSLocalNetworkUsageDescription about why every language needs an explicit value.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "NerLan looks for your whisperASR transcription server on the local network so it can fill in the server address for you."
+            "value" : "NerLan records you reading a sentence aloud during shadowing practice, so you can play your attempt back against the original audio and compare your pronunciation. Recordings stay on this device and are never uploaded."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在跟讀練習中，NerLan 會錄下你朗讀句子的聲音，讓你和原音對照播放、比較自己的發音。錄音只會留在這台裝置上，不會上傳。"
           }
         }
       }
