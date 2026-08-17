@@ -14,7 +14,12 @@ final class SettingsStore: ObservableObject {
     /// keeps each side's configuration. See `transcriptionConfig`/`chatConfig`.
     enum APIProvider: String { case openAIOfficial, custom }
 
-    static let defaultChatModel = "gpt-4o"
+    /// Drives the handout, translation and sentence-segmentation calls. Measured
+    /// against gpt-4o on the same episode and transcript: 16s vs 11s for one
+    /// handout segment — a proportional cost worth paying, because gpt-4o needed
+    /// three rounds of defensive prompt rules to stop it ignoring instructions
+    /// (see the punctuation and heading-translation clauses in `OpenAIService`).
+    static let defaultChatModel = "gpt-5.4"
     static let defaultTranscriptionModel = "whisper-1"
 
     /// The AI output language a fresh install starts with: what the device is set
